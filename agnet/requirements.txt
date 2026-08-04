@@ -1,0 +1,4 @@
+streamlit>=1.40
+requests>=2.32
+pypdf>=5.0
+pywin32>=311; sys_platform == "win32"

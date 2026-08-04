@@ -1,0 +1,33 @@
+{
+  "chunks": 35973,
+  "files_scanned": 668,
+  "failures": [],
+  "by_type": {
+    ".doc_chunks": 112,
+    ".doc_files": 65,
+    ".docx_chunks": 385,
+    ".docx_files": 324,
+    ".md_chunks": 6,
+    ".md_files": 5,
+    ".mp4_chunks": 0,
+    ".mp4_files": 9,
+    ".mpg_chunks": 0,
+    ".mpg_files": 4,
+    ".pdf_chunks": 28986,
+    ".pdf_files": 114,
+    ".pot_chunks": 58,
+    ".pot_files": 1,
+    ".ppt_chunks": 3098,
+    ".ppt_files": 81,
+    ".pptm_chunks": 47,
+    ".pptm_files": 1,
+    ".pptx_chunks": 3233,
+    ".pptx_files": 62,
+    ".zip_chunks": 2,
+    ".zip_files": 2,
+    "catalog_only": 28
+  },
+  "primary_textbook": "D:\\OneDrive\\文档\\我的文件\\git\\仁爱大学物理智能助教\\教学素材\\教材\\物理学  第5版 -- 祝之光 -- 2018 -- 北京_高等教育出版社.pdf",
+  "primary_solution": "D:\\OneDrive\\文档\\我的文件\\git\\仁爱大学物理智能助教\\教学素材\\教材\\物理学（第五版）祝之光习题解答.pdf",
+  "policy": "祝之光教材优先，教学素材全目录补充"
+}
