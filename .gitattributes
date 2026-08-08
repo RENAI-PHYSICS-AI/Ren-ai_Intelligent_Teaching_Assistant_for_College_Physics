@@ -3,3 +3,9 @@
 *.pptx filter=lfs diff=lfs merge=lfs -text
 *.mp4 filter=lfs diff=lfs merge=lfs -text
 *.zip filter=lfs diff=lfs merge=lfs -text
+rocky/*.sh text eol=lf
+rocky/**/*.service text eol=lf
+rocky/**/*.conf text eol=lf
+rocky/*.example text eol=lf
+rocky/*.in text eol=lf
+rocky/*.lock text eol=lf

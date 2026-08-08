@@ -1,0 +1,141 @@
+# Rocky Linux 10 用户目录版
+
+本目录是一套与 Windows 版独立的、可直接复制的 Rocky Linux 10 版本。应用、原始教学素材、RAG 知识库、迁移的用户/管理员/历史数据和两套可视化实验都在这里。
+
+安装不需要也不允许 `sudo`，不会写入 `/opt`、`/etc`、`/var`、`/usr/local`，不会创建系统用户，也不会修改 Nginx、systemd、firewalld 或 SELinux。Python、Julia、配置、日志和 PID 文件都保存在复制后的当前目录。
+
+## 目录与数据
+
+当前目录约 `1.72 GiB`，包含：
+
+- 原始教学素材 668 个文件；
+- RAG 主知识库 50,142 个文本块；
+- Windows 端现有用户、管理员、对话、反馈、学情与身份名册；
+- 数据库备份和管理员签名密钥；
+- 李萨如图形与声速测量实验。
+
+`.streamlit/secrets.toml` 和 API Key 不会明文迁移。模型连接写在安装后生成的 `config/physics-assistant.env` 中。
+
+## 运行结构
+
+```text
+局域网浏览器
+  └─ http://服务器IP:8501  用户级 Python 网关
+       ├─ 智能助教与 WebSocket → 127.0.0.1:8502
+       └─ 管理员页面           → 127.0.0.1:8603
+
+可视化实验
+  ├─ http://服务器IP:9384  李萨如实验
+  └─ http://服务器IP:9385  声速实验
+```
+
+8502 和 8603 只监听本机；浏览器统一使用 8501。服务器纯 CPU 可用，实验图形由访问者浏览器的 WebGL2 渲染。
+
+## 环境要求
+
+- Rocky Linux 10，`x86_64` 或 `aarch64`；
+- 普通 SSH 用户，不需要 sudo 权限；
+- 至少 8 GB 内存，Julia 首次预编译建议 12 GB；
+- 用户目录至少预留 8 GB 空间；
+- 系统已有 `curl`、`tar`、`gzip`、`sha256sum`、`awk`；
+- 安装阶段能访问 uv、Python 包源和 Julia 官方下载站；
+- 能访问模型服务 `http://172.16.2.42:1234/v1`。
+
+系统缺少基础命令时，安装器只报告缺项，不会自行调用 dnf 或修改系统。
+
+## 复制与安装
+
+在 Windows 项目根目录执行：
+
+```powershell
+scp -r ".\rocky" 用户名@Rocky服务器IP:~/
+```
+
+登录 Rocky 后，以普通用户执行：
+
+```bash
+cd ~/rocky
+bash install.sh
+```
+
+不要运行 `sudo bash install.sh`；安装器会拒绝 root，以免文件落入系统目录或 `/root`。
+
+默认直接以复制后的 `~/rocky` 作为安装目录，不再复制到别处。安装器会在本目录建立：
+
+```text
+.runtime/                     # uv、Julia、Julia depot、日志和 PID
+agnet/.venv/                  # Python 环境
+config/physics-assistant.env  # 权限 0600 的运行配置
+```
+
+已有管理员已随数据库迁移，不会再次询问密码。只有数据库确实没有管理员时才交互创建。
+
+若暂时跳过 Julia 预编译：
+
+```bash
+PRECOMPILE_EXPERIMENTS=0 bash install.sh
+```
+
+## 服务管理
+
+安装结束会自动启动服务。以后均以普通用户执行：
+
+```bash
+bash manage.sh start
+bash manage.sh stop
+bash manage.sh restart
+bash manage.sh status
+bash manage.sh check
+bash manage.sh logs
+```
+
+服务由 `nohup` 在后台运行，日志位于 `.runtime/logs/`。本版本不会注册系统开机服务；服务器重启后进入目录执行 `bash manage.sh start` 即可。
+
+## 模型配置
+
+```bash
+vi config/physics-assistant.env
+bash manage.sh restart
+```
+
+默认配置：
+
+```ini
+PHYSICS_BASE_URL=http://172.16.2.42:1234/v1
+PHYSICS_MODEL=qwen/qwen3-vl-30b
+PHYSICS_API_KEY=
+ADMIN_LOGIN_URL=/admin-login
+```
+
+Python 网关使管理员与学生端继续共用 8501，不需要 Nginx。
+
+## 知识库
+
+完整 `教学素材` 与现成知识库都已包含。需要在 Rocky 重新构建时：
+
+```bash
+./agnet/.venv/bin/python ./agnet/build_kb.py
+```
+
+PDF 解析需要系统提供 `pdftotext`；DOCX/PPTX 原生解析。旧 `.doc/.ppt/.pot` 若需重建，建议由服务器管理员提供 LibreOffice headless。已有知识库不依赖这些工具。
+
+## 局域网访问
+
+应用会监听 8501，实验监听 9384/9385，但安装器不会修改系统防火墙。若其他电脑无法访问，请让服务器管理员按学校网段放行 TCP 8501、9384、9385；8502 和 8603 不应对外开放。
+
+## 便携性检查
+
+Windows 外层项目提供 `check_portable_paths.py`，已确认源码、配置、知识库字段和所有 SQLite 数据库中没有写死 `C:`、`D:`、`E:` 等盘符路径。
+
+## 文件结构
+
+```text
+rocky/
+├─ install.sh                 # 唯一安装入口，普通用户执行
+├─ manage.sh                  # 用户级服务管理
+├─ requirements.in
+├─ requirements.lock
+├─ physics-assistant.env.example
+├─ agnet/                     # 应用、知识库、迁移数据与 Python 网关
+└─ 教学素材/                 # 全部原始教学资源
+```

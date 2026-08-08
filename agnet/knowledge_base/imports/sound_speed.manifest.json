@@ -1,0 +1,20 @@
+{
+  "created_at": "2026-08-03T07:44:01.586157+00:00",
+  "documents": 34,
+  "pdf_documents": 30,
+  "chunks": 4059,
+  "features": 60000,
+  "chunk_size": 760,
+  "chunk_overlap": 120,
+  "retrieval": "character TF-IDF + BM25",
+  "ocr_recommended_documents": [
+    "Chinese_1990_现代声学评述_物理.pdf",
+    "Chinese_马大猷_中国物理学会.pdf",
+    "Crawford_1968_Berkeley_Physics_Course_Waves.pdf",
+    "Laplace_1816_Sur_la_vitesse_du_son_dans_l_air_et_dans_l_eau.pdf",
+    "MaDayou_1979_中国声学三十年_声学学报.pdf",
+    "Morse_1948_Vibration_and_Sound.pdf",
+    "Rayleigh_1877_The_Theory_of_Sound_Vol1.pdf",
+    "Rayleigh_1877_The_Theory_of_Sound_Vol2.pdf"
+  ]
+}

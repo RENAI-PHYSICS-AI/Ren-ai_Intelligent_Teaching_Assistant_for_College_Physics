@@ -1,0 +1,11 @@
+{
+  "created_at": "2026-08-01T08:11:26.651984+00:00",
+  "documents": 36,
+  "pdf_documents": 30,
+  "chunks": 10160,
+  "features": 60000,
+  "chunk_size": 760,
+  "chunk_overlap": 120,
+  "retrieval": "character TF-IDF + BM25",
+  "ocr_recommended_documents": []
+}

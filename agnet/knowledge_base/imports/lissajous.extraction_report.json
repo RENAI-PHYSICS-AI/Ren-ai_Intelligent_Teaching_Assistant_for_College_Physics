@@ -1,0 +1,296 @@
+[
+  {
+    "source": "Barna_Matyas_2020_Lissajous_Prime_Frequencies.pdf",
+    "pages": 5,
+    "chunks": 11,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Birla_2020_Lissajous_Phase_Identification_MEMS.pdf",
+    "pages": 11,
+    "chunks": 90,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Cena_2014_2D_Harmonic_Oscillator_Lissajous.pdf",
+    "pages": 9,
+    "chunks": 44,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Chinese_2014_基于李萨如扫描的微型激光投影显示技术.pdf",
+    "pages": 6,
+    "chunks": 17,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Chinese_2022_国外最新振动学教材调研及特色分析.pdf",
+    "pages": 9,
+    "chunks": 34,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Chinese_2025_基于数字示波器进行图像重建的原理和方法.pdf",
+    "pages": 6,
+    "chunks": 18,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Chinese_IHEP_振动专题_傅里叶与振动合成.pdf",
+    "pages": 50,
+    "chunks": 46,
+    "empty_pages": [
+      37
+    ],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Chinese_SJTU_第29-30讲_振动与波1.pdf",
+    "pages": 8,
+    "chunks": 9,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Chinese_Taiwan_第51届科展_Y摆利萨如图形.pdf",
+    "pages": 31,
+    "chunks": 73,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Chinese_Tongji_物理实验手册_示波器李萨如图形.pdf",
+    "pages": 25,
+    "chunks": 50,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Chinese_UESTC_大学物理实验_李萨如图形测频率相位.pdf",
+    "pages": 52,
+    "chunks": 102,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Chladni_1802_Die_Akustik.pdf",
+    "pages": 380,
+    "chunks": 1316,
+    "empty_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      10,
+      46,
+      313,
+      346,
+      353,
+      354,
+      355,
+      356,
+      357,
+      364,
+      365,
+      366,
+      369,
+      370,
+      371,
+      372,
+      373,
+      375,
+      376,
+      377,
+      378,
+      379,
+      380
+    ],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Dencker_2015_Multivariate_polynomial_interpolation_Lissajous_Chebyshev_nodes.pdf",
+    "pages": 30,
+    "chunks": 120,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "DenHartog_1956_Mechanical_Vibrations.pdf",
+    "pages": 456,
+    "chunks": 1624,
+    "empty_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      444,
+      453,
+      455
+    ],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Doll_Ingold_2007_Lissajous_Curves_Semiclassical_Theory.pdf",
+    "pages": 9,
+    "chunks": 69,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Dullin_Waalkens_2018_Lissajous_Superintegrability.pdf",
+    "pages": 14,
+    "chunks": 62,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Erb_2015_Survey_bivariate_Lagrange_interpolation_Lissajous_nodes.pdf",
+    "pages": 14,
+    "chunks": 87,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Fourier_1878_Analytical_Theory_of_Heat.pdf",
+    "pages": 508,
+    "chunks": 1495,
+    "empty_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      10,
+      30,
+      502,
+      503,
+      504,
+      505,
+      508
+    ],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Helmholtz_1895_On_the_Sensations_of_Tone.pdf",
+    "pages": 608,
+    "chunks": 3566,
+    "empty_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      26,
+      283,
+      496,
+      603,
+      604,
+      605,
+      608
+    ],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Hogan_2019_Oscilloscope_Lissajous_Measurements.pdf",
+    "pages": 16,
+    "chunks": 35,
+    "empty_pages": [
+      2,
+      4,
+      11,
+      13,
+      14
+    ],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Lehar_Harmonic_Resonance_Lissajous_Chapter.pdf",
+    "pages": 24,
+    "chunks": 104,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Little_Application_and_Investigation_of_Lissajous_Curves.pdf",
+    "pages": 15,
+    "chunks": 26,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Littlejohn_Mathematica_2D_Oscillator_Lissajous.pdf",
+    "pages": 28,
+    "chunks": 80,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Melde_1860_Erregung_stehender_Wellen_1860_OCR.pdf",
+    "pages": 25,
+    "chunks": 76,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "MPIWG_Sounds_of_Science_Lissajous_optical_method_context.pdf",
+    "pages": 136,
+    "chunks": 650,
+    "empty_pages": [
+      2,
+      4,
+      8,
+      30,
+      42,
+      48,
+      64
+    ],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Nonlinear_Lissajous_Orbits_2026.pdf",
+    "pages": 17,
+    "chunks": 70,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Ollongren_1967_Lissajous_Galactic_Orbits.pdf",
+    "pages": 7,
+    "chunks": 41,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "OnChip_2022_MEMS_Lissajous_Scanner.pdf",
+    "pages": 9,
+    "chunks": 55,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Terquem_1878_Courbes_de_deux_mouvements_vibratoires_perpendiculaires.pdf",
+    "pages": 27,
+    "chunks": 90,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Wang_2020_Dense_Rapid_Lissajous_Scanning.pdf",
+    "pages": 7,
+    "chunks": 37,
+    "empty_pages": [],
+    "ocr_recommended": false
+  }
+]
