@@ -153,9 +153,9 @@ def launch_service(service: ExperimentService) -> subprocess.Popen | None:
         "a", encoding="utf-8", buffering=1
     )
     environment = os.environ.copy()
-    environment[service.julia_host_env] = environment.get(
-        "PHYSICS_EXPERIMENT_BIND", "0.0.0.0"
-    )
+    # Experiments are private upstreams. Browsers reach them only through the
+    # same-origin /experiments/... routes on the main 8501 gateway.
+    environment[service.julia_host_env] = "127.0.0.1"
     if service.key == "lissajous":
         environment["LISSAJOUS_WEB_PORT"] = str(service_port(service))
     else:
@@ -212,8 +212,7 @@ def render_experiment_frame(
 ) -> None:
     settings = json.dumps(
         {
-            "port": service_port(service),
-            "route": route,
+            "path": f"/experiments/{service.key.replace('_', '-')}{route}",
             "title": title or service.title,
             "readyEvent": service.ready_event,
             "failedEvent": service.failed_event,
@@ -365,11 +364,7 @@ _EMBED_HTML = r"""
   let timeout = 0;
   title.textContent = `正在加载${settings.title}`;
 
-  const experimentUrl = () => {
-    const hostname = window.parent.location.hostname || '127.0.0.1';
-    const bracketed = hostname.includes(':') ? `[${hostname}]` : hostname;
-    return `http://${bracketed}:${settings.port}${settings.route}`;
-  };
+  const experimentUrl = () => settings.path;
   const showReady = () => {
     window.clearTimeout(timeout);
     loading.classList.add('hidden');
@@ -378,7 +373,7 @@ _EMBED_HTML = r"""
     window.clearTimeout(timeout);
     spinner.style.display = 'none';
     title.textContent = `${settings.title}暂时无法显示`;
-    detail.textContent = message || '请确认实验服务端口可以访问，然后重新连接。';
+    detail.textContent = message || '内嵌实验服务暂时不可用，请稍后重新连接。';
     detail.classList.add('error');
     retry.classList.add('visible');
   };
@@ -389,7 +384,7 @@ _EMBED_HTML = r"""
     retry.classList.remove('visible');
     frame.src = experimentUrl() + `?attempt=${Date.now()}`;
     timeout = window.setTimeout(
-      () => showError('实验初始化时间较长。可以稍后重新连接，或检查 9384/9385 端口是否开放。'),
+      () => showError('实验初始化时间较长。可以稍后重新连接，或查看实验运行日志。'),
       90000
     );
   };

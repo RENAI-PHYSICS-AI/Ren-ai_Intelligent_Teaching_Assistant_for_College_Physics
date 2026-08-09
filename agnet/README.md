@@ -26,7 +26,7 @@ julia --project=experiments/lissajous -e "using Pkg; Pkg.instantiate(); Pkg.prec
 julia --project=experiments/sound_speed -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
 ```
 
-本机实验端口为 `9384` 和 `9385`。局域网使用前，以管理员身份运行 `enable_lan.ps1`，脚本会同时开放 `8501`、`9384` 和 `9385`。
+两套实验只监听本机，由 `gateway.py` 通过主站 `8501/experiments/...` 内嵌代理。局域网使用前，以管理员身份运行 `enable_lan.ps1`，脚本只开放统一入口 `8501`。
 
 同时启动学生端和管理员后台：
 
@@ -34,4 +34,4 @@ julia --project=experiments/sound_speed -e "using Pkg; Pkg.instantiate(); Pkg.pr
 .\start_all.ps1
 ```
 
-管理员后台默认地址为 `http://127.0.0.1:8603/analytics`，详细配置见仓库根目录说明。
+管理员后台也由统一入口代理；管理员从主站登录后会跳转到 `/analytics`。详细配置见仓库根目录说明。

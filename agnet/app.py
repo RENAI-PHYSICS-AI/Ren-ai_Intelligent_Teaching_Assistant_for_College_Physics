@@ -239,7 +239,7 @@ def admin_login_target() -> str:
         )
     )
     admin_login_url = setting(
-        "ADMIN_LOGIN_URL", "http://127.0.0.1:8603/admin-login"
+        "ADMIN_LOGIN_URL", "/admin-login"
     )
     ticket = admin_auth.issue_token(
         admin_token, st.session_state.username, "admin-login", 60

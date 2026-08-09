@@ -2,14 +2,9 @@ $ErrorActionPreference = "Stop"
 
 $rules = @(
     @{
-        Name = "大学物理智能助教 (Streamlit 8501)"
-        Description = "允许专用局域网设备访问大学物理智能助教"
+        Name = "大学物理智能助教 (统一入口 8501)"
+        Description = "允许专用局域网设备访问智能助教、管理员页面和内嵌实验"
         Ports = "8501"
-    },
-    @{
-        Name = "大学物理智能助教 (可视化实验 9384-9385)"
-        Description = "允许专用局域网设备访问李萨如和声速可视化实验"
-        Ports = "9384-9385"
     }
 )
 $isAdministrator = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
@@ -41,7 +36,11 @@ foreach ($rule in $rules) {
             -LocalPort $rule.Ports | Out-Null
     }
 }
-Write-Host "已配置智能助教和可视化实验的局域网防火墙规则。" -ForegroundColor Green
+$obsoleteRule = Get-NetFirewallRule -DisplayName "大学物理智能助教 (可视化实验 9384-9385)" -ErrorAction SilentlyContinue
+if ($obsoleteRule) {
+    $obsoleteRule | Remove-NetFirewallRule
+}
+Write-Host "已配置统一入口 8501；内嵌实验不再单独开放端口。" -ForegroundColor Green
 
 $addresses = Get-NetIPConfiguration |
     Where-Object { $_.NetAdapter.Status -eq "Up" -and $_.IPv4Address } |

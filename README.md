@@ -78,6 +78,7 @@ flowchart LR
 │  ├─ build_kb.py           # 知识库构建
 │  ├─ visualization.py      # 可视化规范校验和绘图
 │  ├─ experiment_hub.py     # 实验启动与嵌入
+│  ├─ gateway.py            # 8501 同源入口及内嵌实验代理
 │  ├─ experiments/          # 两套 Julia/WGLMakie 实验
 │  ├─ storage.py            # 用户、会话和 Markdown 导出
 │  ├─ analytics_db.py       # 学情与反馈数据
@@ -125,10 +126,10 @@ Windows 版端口：
 
 | 服务 | 监听地址 |
 | --- | --- |
-| 主应用 | `0.0.0.0:8501` |
-| 管理员服务 | `127.0.0.1:8603` |
-| 李萨如实验 | `0.0.0.0:9384`，按需启动 |
-| 声速实验 | `0.0.0.0:9385`，按需启动 |
+| 对外统一入口 | `0.0.0.0:8501` |
+| Streamlit 内部服务 | 仅监听本机 |
+| 管理员内部服务 | 仅监听本机 |
+| 李萨如与声速实验 | 仅监听本机，通过 `8501/experiments/...` 内嵌 |
 
 ### 模型及管理员配置
 
@@ -147,7 +148,7 @@ admin_username = "admin"
 admin_display_name = "课程管理员"
 admin_password = "至少 12 位的独立强密码"
 admin_token = "足够长的随机令牌"
-admin_login_url = "http://127.0.0.1:8603/admin-login"
+admin_login_url = "/admin-login"
 ```
 
 不要把 `secrets.toml`、API Key、密码或内网令牌提交到 Git。
@@ -164,9 +165,6 @@ admin_login_url = "http://127.0.0.1:8603/admin-login"
 | `PHYSICS_HISTORY_MAX_MESSAGES` | 单次请求最多携带的历史消息数 |
 | `PHYSICS_MAX_OUTPUT_TOKENS` | 单次回答最大输出 token 数 |
 | `PHYSICS_JULIA_EXE` | Julia 可执行文件路径 |
-| `PHYSICS_EXPERIMENT_BIND` | 实验服务监听地址 |
-| `PHYSICS_LISSAJOUS_PORT` | 李萨如实验端口，默认 `9384` |
-| `PHYSICS_SOUND_SPEED_PORT` | 声速实验端口，默认 `9385` |
 | `PHYSICS_CJK_FONT` | Rocky 上可选的中文字体文件 |
 
 联网检索属于固定回答策略，不设置用户开关。模型名称只保存在配置和运行日志中，普通用户页面不会展示底层模型 ID。
@@ -179,7 +177,7 @@ admin_login_url = "http://127.0.0.1:8603/admin-login"
 .\agnet\enable_lan.ps1
 ```
 
-脚本为专用网络开放 `8501`、`9384` 和 `9385`。其他设备访问 `http://Windows主机IP:8501`。
+脚本只为专用网络开放统一入口 `8501`。管理员页面和两套可视化实验均从主站内嵌访问，不再单独开放端口。其他设备访问 `http://Windows主机IP:8501`。
 
 ## Rocky Linux 10 独立版
 
@@ -228,10 +226,9 @@ Rocky 版使用目录内的 Python 网关统一公开 `8501`：
 | 对外统一入口 | `0.0.0.0:8501` |
 | Streamlit 内部服务 | `127.0.0.1:8502` |
 | 管理员内部服务 | `127.0.0.1:8603` |
-| 李萨如实验 | `0.0.0.0:9384` |
-| 声速实验 | `0.0.0.0:9385` |
+| 李萨如与声速实验 | 仅监听 `127.0.0.1`，由统一入口代理 |
 
-安装脚本不会修改防火墙。若局域网客户端无法访问，应由服务器管理员按实际网段放行 TCP `8501`、`9384` 和 `9385`，不要对外开放 `8502` 或 `8603`。
+安装脚本不会修改防火墙。若局域网客户端无法访问，应由服务器管理员按实际网段仅放行 TCP `8501`；Streamlit、管理员和实验内部服务均不应对外开放。
 
 Rocky 模型配置位于：
 
@@ -386,7 +383,7 @@ Stop-Process -Id <OwningProcess>
 
 ### 实验页面无法打开
 
-确认 Julia 依赖已完成初始化，服务器端口 `9384`、`9385` 可访问，客户端浏览器支持 WebGL2。Rocky 可运行 `bash manage.sh logs` 查看主服务日志；Julia 实验日志位于应用运行目录的 `runtime/experiments/`。
+确认 Julia 依赖已完成初始化、主站 `8501` 可以访问且客户端浏览器支持 WebGL2。实验通过主站同源内嵌，不需要另开端口。Rocky 可运行 `bash manage.sh logs` 查看主服务日志；Julia 实验日志位于应用运行目录的 `runtime/experiments/`。
 
 ### Rocky 重启后网页无法访问
 
