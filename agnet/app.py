@@ -133,7 +133,7 @@ with st.sidebar:
             <span class="sidebar-brand-name">大学物理智能助教</span>
           </div>
           <div class="sidebar-brand-subtitle">以祝之光《物理学》第5版为课程基准</div>
-          <div class="sidebar-brand-features">本地 RAG 检索 · 图片识题 · 智能讲解 · 交互式物理实验</div>
+          <div class="sidebar-brand-features">本地 RAG 核心 · 网络内容补充 · 图片识题 · 交互式物理实验</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -606,7 +606,7 @@ if not st.session_state.messages:
     <div class="welcome">
       <div class="welcome-line"><span class="bot-icon">🤖</span><span>你好！我是你的<b>大学物理智能助教</b>，可以陪你理解概念、推导公式和分析习题。</span></div>
       <ul>
-        <li><b>教材增强：</b>回答前检索祝之光教材、习题解答和课程资料</li>
+        <li><b>知识增强：</b>以祝之光教材和本地课程资料为核心，结合网络内容补充回答</li>
         <li><b>分步讲解：</b>给出思路、公式条件、计算过程与易错点</li>
         <li><b>可视化辅助：</b>根据问题生成绘图代码，并在回答后直接运行演示</li>
       </ul>
@@ -654,7 +654,7 @@ if question:
         thinking = st.empty()
         thinking.markdown("""
         <div class="thinking-state"><span class="thinking-orb"></span>
-        <span>正在查阅教材并组织讲解<span class="thinking-dots"><span>·</span><span>·</span><span>·</span></span></span></div>
+        <span>正在查阅本地知识并整合补充资料<span class="thinking-dots"><span>·</span><span>·</span><span>·</span></span></span></div>
         """, unsafe_allow_html=True)
         components.html("""
         <script>

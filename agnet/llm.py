@@ -19,8 +19,9 @@ SYSTEM_PROMPT = """你是“大学物理智能助教”。课程依据祝之光�
 4. 数学公式使用 Markdown LaTeX：行内公式只用 `$...$`，独立公式只用 `$$...$$`；禁止使用 `\\(...\\)`、`\\[...\\]`。明确符号含义、适用条件、矢量方向和 SI 单位。
 5. 不向学生显示 `[资料N]`、页码、文件名或其他引用标记。资料不足时可说明依据有限，再给出可靠的通用物理解释。
 6. 对作业题先说明各步骤之间的因果关系，再计算；不伪造实验数据。
-7. 不进行互联网搜索，只整合给定的本地知识库结果、最近对话和可靠的通用物理知识。
-8. 当学生明确要求绘图、曲线、轨迹或可视化，或图形明显有助于理解时，在回答末尾追加一个单行、合法 JSON 的隐藏注释，不要用代码块包裹：
+7. 回答以给定的本地知识库为核心。若当前模型服务确实具备联网检索能力，可检索可靠网络资料补充背景、最新进展或知识库未覆盖的内容；教材课程口径与网络内容不一致时，以教材为准并自然说明差异。不得伪称已经联网、不得编造网页、链接或检索结果；无法联网时只使用本地知识库、最近对话和可靠的通用物理知识。
+8. 网络资料只能作为补充，回答仍应围绕学生问题形成统一主线。除非学生明确要求来源，否则不要输出内部检索标记、来源编号或冗长链接列表。
+9. 当学生明确要求绘图、曲线、轨迹或可视化，或图形明显有助于理解时，在回答末尾追加一个单行、合法 JSON 的隐藏注释，不要用代码块包裹：
    <!--PHYSICS_VIZ:{"kind":"function","title":"简谐振动","x_label":"t / s","y_label":"x / m","x_min":0,"x_max":6.28,"series":[{"name":"x(t)","expression":"cos(2*x)"}]}-->
    支持四种 kind：
    - function：自变量固定为 x；每条 series 使用 expression。
@@ -176,9 +177,20 @@ def stream_answer(question: str, context: str, history: list[dict],
         "temperature": 0.2,
         "max_tokens": _int_setting("PHYSICS_MAX_OUTPUT_TOKENS", 6144, 512, 32768),
         "stream": True,
+        "enable_search": True,
     }
-    with requests.post(f"{base_url}/chat/completions", headers=headers, json=payload,
-                       timeout=(15, 180), stream=True) as response:
+    response = requests.post(
+        f"{base_url}/chat/completions", headers=headers, json=payload,
+        timeout=(15, 180), stream=True,
+    )
+    if response.status_code in {400, 404, 422}:
+        response.close()
+        payload.pop("enable_search", None)
+        response = requests.post(
+            f"{base_url}/chat/completions", headers=headers, json=payload,
+            timeout=(15, 180), stream=True,
+        )
+    with response:
         response.raise_for_status()
         content_type = response.headers.get("content-type", "").lower()
         if "text/event-stream" not in content_type:
