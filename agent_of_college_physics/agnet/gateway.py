@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from collections.abc import AsyncIterator
 
 from aiohttp import ClientSession, ClientTimeout, WSMsgType, web
 
 
+LOGGER = logging.getLogger("physics_gateway")
 STREAMLIT_UPSTREAM = os.getenv("PHYSICS_STREAMLIT_UPSTREAM", "http://127.0.0.1:8502")
 ADMIN_UPSTREAM = os.getenv("PHYSICS_ADMIN_UPSTREAM", "http://127.0.0.1:8603")
 EXPERIMENT_UPSTREAMS = {
@@ -42,7 +44,7 @@ def upstream_url(request: web.Request) -> str:
             suffix = request.path[len(prefix):] or "/"
             query = f"?{request.query_string}" if request.query_string else ""
             return f"{base}{suffix}{query}"
-    if request.path == "/rocky-health/admin":
+    if request.path == "/agent-health/admin":
         return f"{ADMIN_UPSTREAM}/health"
     base = ADMIN_UPSTREAM if request.path in ADMIN_PATHS else STREAMLIT_UPSTREAM
     return f"{base}{request.rel_url}"
@@ -77,15 +79,20 @@ async def copy_websocket(source, destination) -> None:
 
 
 async def websocket_proxy(request: web.Request) -> web.WebSocketResponse:
-    browser = web.WebSocketResponse(autoping=True, heartbeat=30)
-    await browser.prepare(request)
-    session: ClientSession = request.app["client"]
-    headers = forward_headers(request)
     protocols = [
         item.strip()
         for item in request.headers.get("Sec-WebSocket-Protocol", "").split(",")
         if item.strip()
     ]
+    # Streamlit requires the `streamlit` subprotocol to be acknowledged by
+    # the browser-facing socket. Preparing a protocol-less socket leaves the
+    # frontend indefinitely on its skeleton screen when accessed over LAN.
+    browser = web.WebSocketResponse(
+        protocols=protocols, autoping=True, heartbeat=30
+    )
+    await browser.prepare(request)
+    session: ClientSession = request.app["client"]
+    headers = forward_headers(request)
     try:
         async with session.ws_connect(
             upstream_url(request), headers=headers, protocols=protocols,
@@ -101,6 +108,7 @@ async def websocket_proxy(request: web.Request) -> web.WebSocketResponse:
                 task.cancel()
             await asyncio.gather(*done, *pending, return_exceptions=True)
     except Exception:
+        LOGGER.exception("WebSocket upstream failed: %s", request.path_qs)
         await browser.close(code=1011, message=b"upstream unavailable")
     return browser
 

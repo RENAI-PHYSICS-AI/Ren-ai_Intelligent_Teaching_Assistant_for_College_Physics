@@ -21,6 +21,7 @@ export PYTHONPATH="$APP_ROOT/agnet"
 export PHYSICS_JULIA_EXE="${PHYSICS_JULIA_EXE:-$RUNTIME_ROOT/bin/julia}"
 export JULIA_DEPOT_PATH="${JULIA_DEPOT_PATH:-$RUNTIME_ROOT/julia-depot}"
 export PHYSICS_SOUND_SPEED_OUTPUT_DIR="${PHYSICS_SOUND_SPEED_OUTPUT_DIR:-$RUNTIME_ROOT/experiment-output/sound-speed}"
+export PHYSICS_CJK_FONT="${PHYSICS_CJK_FONT:-$RUNTIME_ROOT/fonts/NotoSansCJKsc-Regular.otf}"
 
 pid_alive() {
   local name="$1" pid_file="$PID_DIR/$1.pid" pid
@@ -93,6 +94,43 @@ stop_one() {
   echo "$name 已停止"
 }
 
+experiment_pids() {
+  local proc_dir pid command
+  for proc_dir in /proc/[0-9]*; do
+    [[ -r "$proc_dir/cmdline" ]] || continue
+    pid="${proc_dir##*/}"
+    command="$(tr '\0' ' ' <"$proc_dir/cmdline" 2>/dev/null || true)"
+    case "$command" in
+      *"$APP_ROOT/agnet/experiments/lissajous/web.jl"*|*"$APP_ROOT/agnet/experiments/sound_speed/web.jl"*)
+        printf '%s\n' "$pid"
+        ;;
+    esac
+  done
+}
+
+stop_experiments() {
+  local -a pids=()
+  local pid
+  mapfile -t pids < <(experiment_pids)
+  if (( ${#pids[@]} == 0 )); then
+    echo "可视化实验未运行"
+    return 0
+  fi
+  kill -TERM "${pids[@]}" 2>/dev/null || true
+  for _ in {1..20}; do
+    local any_alive=0
+    for pid in "${pids[@]}"; do
+      kill -0 "$pid" 2>/dev/null && any_alive=1
+    done
+    (( any_alive == 0 )) && break
+    sleep 0.5
+  done
+  for pid in "${pids[@]}"; do
+    kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" 2>/dev/null || true
+  done
+  echo "可视化实验已停止"
+}
+
 status_all() {
   local name
   for name in admin web gateway; do
@@ -107,14 +145,14 @@ status_all() {
 check_all() {
   curl --fail --silent --show-error http://127.0.0.1:8502/_stcore/health; printf '\n'
   curl --fail --silent --show-error http://127.0.0.1:8603/health; printf '\n'
-  curl --fail --silent --show-error http://127.0.0.1:8501/rocky-health/admin; printf '\n'
+  curl --fail --silent --show-error http://127.0.0.1:8501/agent-health/admin; printf '\n'
   curl --fail --silent --show-error http://127.0.0.1:8501/_stcore/health; printf '\n'
 }
 
 case "${1:-status}" in
   start) start_all ;;
-  stop) stop_one gateway; stop_one web; stop_one admin ;;
-  restart) "$0" stop; "$0" start ;;
+  stop) stop_one gateway; stop_one web; stop_experiments; stop_one admin ;;
+  restart) bash "$APP_ROOT/manage.sh" stop; bash "$APP_ROOT/manage.sh" start ;;
   status) status_all ;;
   logs) tail -n 100 -F "$LOG_DIR"/admin.log "$LOG_DIR"/web.log "$LOG_DIR"/gateway.log ;;
   check) check_all ;;

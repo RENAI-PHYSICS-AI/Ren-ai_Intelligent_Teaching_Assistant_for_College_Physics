@@ -5,6 +5,7 @@ import random
 import re
 import time
 import traceback
+import uuid
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -20,8 +21,12 @@ from storage import (
     authenticate,
     clear_messages,
     create_user,
+    delete_message,
     init_db,
+    load_context_messages,
+    load_message_images,
     load_messages,
+    load_messages_page,
     messages_to_markdown,
     save_message,
 )
@@ -202,6 +207,16 @@ if "access_granted" not in st.session_state:
     st.session_state.access_granted = False
 if "quick_questions" not in st.session_state:
     st.session_state.quick_questions = new_quick_questions()
+if "_answer_in_progress" not in st.session_state:
+    st.session_state._answer_in_progress = False
+if "_history_has_more" not in st.session_state:
+    st.session_state._history_has_more = False
+if "_history_paged_user_id" not in st.session_state:
+    st.session_state._history_paged_user_id = None
+if "_analytics_last_touch" not in st.session_state:
+    st.session_state._analytics_last_touch = 0.0
+
+HISTORY_PAGE_SIZE = 8
 
 
 def reset_analytics_session() -> None:
@@ -267,33 +282,188 @@ def redirect_admin_after_login() -> None:
     st.stop()
 
 
-def record_feedback(message: dict, rating: str, comment: str = "") -> None:
-    analytics_db.log_feedback(
-        message.get("interaction_id"),
-        st.session_state.get("analytics_session_id", ""),
-        rating,
-        comment,
-        st.session_state.user_id,
+def message_ui_key(message: dict) -> str:
+    message_id = message.get("id")
+    if message_id is not None:
+        return f"db_{int(message_id)}"
+    ui_id = message.get("_ui_id")
+    if not ui_id:
+        ui_id = uuid.uuid4().hex
+        message["_ui_id"] = ui_id
+    return f"session_{ui_id}"
+
+
+def clear_history_render_state() -> None:
+    for key in list(st.session_state):
+        if key.startswith(("_history_images_", "_history_viz_open_")):
+            st.session_state.pop(key, None)
+
+
+def load_initial_history(user_id: int) -> None:
+    messages, has_more = load_messages_page(user_id, limit=HISTORY_PAGE_SIZE)
+    st.session_state.messages = messages
+    st.session_state._history_has_more = has_more
+    st.session_state._history_paged_user_id = int(user_id)
+    st.session_state.pop("_pending_delete_message", None)
+    clear_history_render_state()
+
+
+def load_earlier_history() -> None:
+    user_id = st.session_state.user_id
+    if user_id is None or not st.session_state.messages:
+        st.session_state._history_has_more = False
+        return
+    oldest_id = next(
+        (message.get("id") for message in st.session_state.messages if message.get("id") is not None),
+        None,
     )
+    if oldest_id is None:
+        st.session_state._history_has_more = False
+        return
+    earlier, has_more = load_messages_page(
+        user_id,
+        before_id=int(oldest_id),
+        limit=HISTORY_PAGE_SIZE,
+    )
+    known_ids = {
+        int(message["id"])
+        for message in st.session_state.messages
+        if message.get("id") is not None
+    }
+    st.session_state.messages = [
+        message for message in earlier if int(message["id"]) not in known_ids
+    ] + st.session_state.messages
+    st.session_state._history_has_more = has_more
+    st.session_state.pop("_pending_delete_message", None)
 
 
-def render_answer_feedback(message: dict, key: str) -> None:
-    interaction_id = message.get("interaction_id")
-    if not interaction_id:
+def reset_history_view() -> None:
+    st.session_state._history_has_more = False
+    st.session_state._history_paged_user_id = None
+    st.session_state.pop("_pending_delete_message", None)
+    clear_history_render_state()
+
+
+def render_history_images(message: dict) -> None:
+    images = message.get("images", [])
+    stable_key = message_ui_key(message)
+    cache_key = f"_history_images_{stable_key}"
+    if not images and message.get("_has_images") and st.session_state.user_id is not None:
+        cached_images = st.session_state.get(cache_key)
+        if cached_images is None:
+            if st.button(
+                "🖼 显示历史附图",
+                key=f"load_history_images_{stable_key}",
+                help="仅在需要时读取原始图片，以加快历史页面加载",
+            ):
+                st.session_state[cache_key] = load_message_images(
+                    st.session_state.user_id,
+                    int(message["id"]),
+                )
+                st.rerun()
+            return
+        images = cached_images
+    for image in images:
+        st.image(image["data"], caption=image.get("name"), width=360)
+
+
+def render_history_visualizations(message: dict) -> None:
+    visualizations = message.get("visualizations", [])
+    if not visualizations:
         return
-    state_key = f"feedback_done_{interaction_id}"
-    if st.session_state.get(state_key):
-        st.caption("已收到你的评价，谢谢。")
+    stable_key = message_ui_key(message)
+    state_key = f"_history_viz_open_{stable_key}"
+    if not st.session_state.get(state_key):
+        st.caption(f"此回答包含 {len(visualizations)} 个可视化演示，按需运行可加快历史加载。")
+        if st.button(
+            "▶ 运行此回答的可视化",
+            key=f"open_history_viz_{stable_key}",
+        ):
+            st.session_state[state_key] = True
+            st.rerun()
         return
-    good_col, bad_col, _ = st.columns([1, 1, 6])
-    if good_col.button("👍 有帮助", key=f"{key}_good"):
-        record_feedback(message, "good")
-        st.session_state[state_key] = True
+    render_visualizations(visualizations, key_prefix=f"history_{stable_key}")
+    if st.button("收起可视化", key=f"close_history_viz_{stable_key}"):
+        st.session_state.pop(state_key, None)
         st.rerun()
-    if bad_col.button("👎 待改进", key=f"{key}_bad"):
-        record_feedback(message, "bad")
-        st.session_state[state_key] = True
+
+
+def delete_history_answer(message_index: int, message: dict) -> None:
+    if st.session_state.get("_answer_in_progress"):
+        st.session_state._history_notice = "回答生成期间暂不能删除历史记录。"
         st.rerun()
+
+    user_id = st.session_state.user_id
+    if user_id is not None:
+        message_id = message.get("id")
+        if message_id is None:
+            load_initial_history(user_id)
+            st.session_state._history_notice = "历史记录已刷新，请再次选择要删除的回答。"
+            st.rerun()
+        try:
+            removed = delete_message(user_id, int(message_id))
+        except Exception:
+            st.session_state._history_notice = "删除失败，请稍后重试。"
+            st.rerun()
+        if not removed:
+            load_initial_history(user_id)
+            st.session_state._history_notice = "该回答已不存在，历史记录已刷新。"
+            st.rerun()
+        st.session_state.messages = [
+            item
+            for item in st.session_state.messages
+            if item.get("id") is None or int(item["id"]) != int(message_id)
+        ]
+        if not st.session_state.messages and st.session_state._history_has_more:
+            load_initial_history(user_id)
+    elif 0 <= message_index < len(st.session_state.messages):
+        del st.session_state.messages[message_index]
+    st.session_state.pop("_pending_delete_message", None)
+    stable_key = message_ui_key(message)
+    st.session_state.pop(f"_history_images_{stable_key}", None)
+    st.session_state.pop(f"_history_viz_open_{stable_key}", None)
+    st.session_state._history_notice = "已删除这条回答。"
+    st.rerun()
+
+
+def render_answer_delete(message: dict, message_index: int) -> None:
+    stable_key = message_ui_key(message)
+    pending_key = st.session_state.get("_pending_delete_message")
+    disabled = bool(st.session_state.get("_answer_in_progress"))
+    if pending_key != stable_key:
+        _, delete_col = st.columns([8, 1.35])
+        if delete_col.button(
+            "🗑 删除",
+            key=f"delete_answer_{stable_key}",
+            help="删除这一条回答",
+            use_container_width=True,
+            disabled=disabled,
+        ):
+            st.session_state._pending_delete_message = stable_key
+            st.rerun()
+        return
+
+    st.caption("确认删除这一条回答？删除后无法恢复。")
+    _, confirm_col, cancel_col = st.columns([6, 1.45, 1.2])
+    if confirm_col.button(
+        "确认删除",
+        key=f"confirm_delete_answer_{stable_key}",
+        type="primary",
+        use_container_width=True,
+        disabled=disabled,
+    ):
+        delete_history_answer(message_index, message)
+    if cancel_col.button(
+        "取消",
+        key=f"cancel_delete_answer_{stable_key}",
+        use_container_width=True,
+    ):
+        st.session_state.pop("_pending_delete_message", None)
+        st.rerun()
+
+
+def mark_answer_in_progress() -> None:
+    st.session_state._answer_in_progress = True
 
 if not st.session_state.access_granted:
     left_space, auth_column, right_space = st.columns([1, 1.35, 1])
@@ -326,7 +496,7 @@ if not st.session_state.access_granted:
                 else:
                     st.session_state.user_id = user_id
                     st.session_state.username = canonical_username
-                    st.session_state.messages = load_messages(user_id)
+                    load_initial_history(user_id)
                     st.session_state.access_granted = True
                     st.rerun()
         with landing_register_tab:
@@ -354,7 +524,8 @@ if not st.session_state.access_granted:
                         st.error(register_message)
                     else:
                         for existing_message in st.session_state.messages:
-                            save_message(user_id, existing_message)
+                            existing_message["id"] = save_message(user_id, existing_message)
+                        load_initial_history(user_id)
                         st.session_state.user_id = user_id
                         st.session_state.username = landing_register_username.strip()
                         st.session_state.access_granted = True
@@ -370,10 +541,20 @@ if not st.session_state.access_granted:
 
 refresh_account_state()
 redirect_admin_after_login()
+if (
+    st.session_state.user_id is not None
+    and st.session_state._history_paged_user_id != st.session_state.user_id
+):
+    load_initial_history(st.session_state.user_id)
+history_notice = st.session_state.pop("_history_notice", None)
+if history_notice:
+    st.toast(history_notice)
 if st.session_state.get("analytics_session_user_id", object()) != st.session_state.user_id:
     reset_analytics_session()
-else:
+    st.session_state._analytics_last_touch = time.monotonic()
+elif time.monotonic() - st.session_state._analytics_last_touch >= 60:
     analytics_db.touch_session(st.session_state.get("analytics_session_id"))
+    st.session_state._analytics_last_touch = time.monotonic()
 
 quick_question = None
 chapter = "全部"
@@ -409,6 +590,7 @@ with st.sidebar:
             st.rerun()
         for index, quick in enumerate(st.session_state.quick_questions):
             if st.button(quick, key=f"sidebar_quick_{index}", use_container_width=True):
+                st.session_state._answer_in_progress = True
                 quick_question = quick
     else:
         st.subheader("🧪 实验导航")
@@ -440,7 +622,7 @@ with st.sidebar:
                     else:
                         st.session_state.user_id = user_id
                         st.session_state.username = canonical_username
-                        st.session_state.messages = load_messages(user_id)
+                        load_initial_history(user_id)
                         st.rerun()
             with register_tab:
                 with st.form("register_form"):
@@ -458,7 +640,8 @@ with st.sidebar:
                         else:
                             # Keep the conversation that was started anonymously.
                             for existing_message in st.session_state.messages:
-                                save_message(user_id, existing_message)
+                                existing_message["id"] = save_message(user_id, existing_message)
+                            load_initial_history(user_id)
                             st.session_state.user_id = user_id
                             st.session_state.username = register_username.strip()
                             st.rerun()
@@ -510,20 +693,37 @@ with st.sidebar:
                 st.session_state.username = "匿名用户"
                 st.session_state.user_role = "anonymous"
                 st.session_state.messages = []
+                reset_history_view()
                 st.session_state.access_granted = False
                 st.session_state.pop("workspace_mode", None)
+                st.session_state.pop("_pending_delete_message", None)
+                st.session_state._answer_in_progress = False
                 st.rerun()
 
-        if st.session_state.messages:
-            markdown_history = messages_to_markdown(
-                st.session_state.messages, st.session_state.username
-            )
+        if st.session_state.messages or (
+            st.session_state.user_id is not None and st.session_state._history_has_more
+        ):
+            if st.session_state.user_id is None:
+                markdown_data = messages_to_markdown(
+                    st.session_state.messages, st.session_state.username
+                ).encode("utf-8-sig")
+            else:
+                export_user_id = int(st.session_state.user_id)
+                export_username = str(st.session_state.username)
+                markdown_data = lambda uid=export_user_id, username=export_username: (
+                    messages_to_markdown(
+                        load_messages(uid, include_image_data=False),
+                        username,
+                    ).encode("utf-8-sig")
+                )
             st.download_button(
-                "⬇ 导出 Markdown",
-                data=markdown_history.encode("utf-8-sig"),
+                "⬇ 导出完整 Markdown",
+                data=markdown_data,
                 file_name="大学物理智能助教_对话记录.md",
                 mime="text/markdown; charset=utf-8",
                 use_container_width=True,
+                on_click="ignore",
+                help="点击下载时才读取完整历史，避免拖慢日常页面加载",
             )
             confirm_clear = st.checkbox("确认清空全部对话记录", key="confirm_clear_history")
             if st.button(
@@ -533,6 +733,7 @@ with st.sidebar:
                 if st.session_state.user_id is not None:
                     clear_messages(st.session_state.user_id)
                 st.session_state.messages = []
+                reset_history_view()
                 st.rerun()
 
         with st.expander("💬 意见反馈", expanded=False):
@@ -592,14 +793,23 @@ if not KB_FILE.exists():
         build()
 kb = load_kb(KB_FILE.stat().st_mtime)
 
+if st.session_state.user_id is not None and st.session_state._history_has_more:
+    st.caption("为提升加载速度，默认显示最近 8 条消息；更早记录可按需加载。")
+    if st.button(
+        "↑ 加载更早记录",
+        key="load_earlier_history",
+        disabled=bool(st.session_state.get("_answer_in_progress")),
+    ):
+        load_earlier_history()
+        st.rerun()
+
 for message_index, message in enumerate(st.session_state.messages):
     with st.chat_message(message["role"]):
-        for image in message.get("images", []):
-            st.image(image["data"], caption=image.get("name"), width=360)
+        render_history_images(message)
         st.markdown(normalize_latex(message["content"]))
-        render_visualizations(message.get("visualizations", []))
+        render_history_visualizations(message)
         if message["role"] == "assistant":
-            render_answer_feedback(message, f"history_feedback_{message_index}")
+            render_answer_delete(message, message_index)
 
 if not st.session_state.messages:
     st.markdown("""
@@ -620,6 +830,7 @@ typed_input = st.chat_input(
     accept_file="multiple",
     file_type=["png", "jpg", "jpeg", "webp"],
     max_upload_size=20,
+    on_submit=mark_answer_in_progress,
 )
 uploaded_images = []
 typed_question = ""
@@ -642,14 +853,24 @@ if question:
     user_message = {"role": "user", "content": question, "images": message_images}
     st.session_state.messages.append(user_message)
     if st.session_state.user_id is not None:
-        save_message(st.session_state.user_id, user_message)
+        user_message["id"] = save_message(st.session_state.user_id, user_message)
     with st.chat_message("user"):
         for image in message_images:
             st.image(image["data"], caption=image.get("name"), width=360)
         st.markdown(question)
     results = kb.search(question, chapter=chapter, top_k=top_k)
     context = context_text(results)
-    history = [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages[:-1]]
+    if st.session_state.user_id is not None and user_message.get("id") is not None:
+        history = load_context_messages(
+            st.session_state.user_id,
+            before_id=int(user_message["id"]),
+            limit=80,
+        )
+    else:
+        history = [
+            {"role": message["role"], "content": message["content"]}
+            for message in st.session_state.messages[:-1]
+        ]
     with st.chat_message("assistant"):
         thinking = st.empty()
         thinking.markdown("""
@@ -744,7 +965,6 @@ if question:
             answer_placeholder.markdown(response)
             render_visualizations(visualizations)
             st.error(f"模型服务调用失败：{exc}")
-        feedback_slot = st.empty()
     detected_chapter = results[0][0].chapter if results else "未分类"
     approximate_input_tokens = max(
         1,
@@ -786,6 +1006,6 @@ if question:
     }
     st.session_state.messages.append(assistant_message)
     if st.session_state.user_id is not None:
-        save_message(st.session_state.user_id, assistant_message)
-    with feedback_slot.container():
-        render_answer_feedback(assistant_message, f"current_feedback_{interaction_id}")
+        assistant_message["id"] = save_message(st.session_state.user_id, assistant_message)
+    st.session_state._answer_in_progress = False
+    st.rerun()

@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import IO
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
 from urllib.request import urlopen
 
 import streamlit as st
@@ -81,6 +82,33 @@ def service_port(service: ExperimentService) -> int:
     if not 1 <= port <= 65535:
         raise ValueError(f"{service.port_env} 必须位于 1 到 65535 之间。")
     return port
+
+
+def service_proxy_url(service: ExperimentService) -> str:
+    """Return the browser-visible Bonito base URL for this experiment."""
+    public_base = os.getenv("PHYSICS_PUBLIC_BASE_URL", "").strip().rstrip("/")
+    if not public_base:
+        return "."
+    slug = service.key.replace("_", "-")
+    return f"{public_base}/experiments/{slug}/"
+
+
+def public_path_prefix() -> str:
+    """Return the path portion used by a same-origin reverse-proxy deployment."""
+    public_base = os.getenv("PHYSICS_PUBLIC_BASE_URL", "").strip()
+    if not public_base:
+        return ""
+    parsed = urlsplit(public_base)
+    path = parsed.path if parsed.scheme or parsed.netloc else public_base
+    normalized = "/" + path.strip("/")
+    return "" if normalized == "/" else normalized
+
+
+def service_browser_path(service: ExperimentService, route: str = "/") -> str:
+    """Build the iframe path while preserving an outer proxy prefix such as /agent."""
+    slug = service.key.replace("_", "-")
+    normalized_route = "/" + route.lstrip("/")
+    return f"{public_path_prefix()}/experiments/{slug}{normalized_route}"
 
 
 def service_ready(service: ExperimentService, timeout: float = 0.45) -> bool:
@@ -158,8 +186,10 @@ def launch_service(service: ExperimentService) -> subprocess.Popen | None:
     environment[service.julia_host_env] = "127.0.0.1"
     if service.key == "lissajous":
         environment["LISSAJOUS_WEB_PORT"] = str(service_port(service))
+        environment["LISSAJOUS_WEB_PROXY_URL"] = service_proxy_url(service)
     else:
         environment["SOUND_SPEED_WEB_PORT"] = str(service_port(service))
+        environment["SOUND_SPEED_WEB_PROXY_URL"] = service_proxy_url(service)
 
     creation_flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
     creation_flags |= getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -212,7 +242,7 @@ def render_experiment_frame(
 ) -> None:
     settings = json.dumps(
         {
-            "path": f"/experiments/{service.key.replace('_', '-')}{route}",
+            "path": service_browser_path(service, route),
             "title": title or service.title,
             "readyEvent": service.ready_event,
             "failedEvent": service.failed_event,

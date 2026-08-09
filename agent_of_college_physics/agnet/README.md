@@ -2,13 +2,13 @@
 
 本目录是 Rocky Linux 独立版的应用代码与运行数据目录。完整部署说明见上一级 [README.md](../README.md)。
 
-请勿单独执行本目录中的 Windows 启动方式。把完整 `rocky` 文件夹复制到服务器后，在上一级目录运行：
+请勿单独执行本目录中的 Windows 启动方式。把完整 `agent_of_college_physics` 文件夹复制到服务器后，在上一级目录运行：
 
 ```bash
 bash install.sh
 ```
 
-请使用普通用户，不要使用 sudo。安装器只在当前 `rocky` 目录中创建 Python、Julia、配置和运行文件，并通过用户级 Python 网关统一提供 `8501`；不会修改任何系统目录。两套可视化实验只作为本机内部服务运行，由主站 `/experiments/...` 路径内嵌，不单独对外提供端口。
+请使用普通用户，不要使用 sudo。安装器只在当前 `agent_of_college_physics` 目录中创建 Python、Julia、配置和运行文件，并通过用户级 Python 网关统一提供 `8501`；不会修改任何系统目录。两套可视化实验只作为本机内部服务运行，由主站 `/experiments/...` 路径内嵌，不单独对外提供端口。
 
 本目录中的关键数据：
 

@@ -1,2 +1,4 @@
-/rocky/config/
-/rocky/.runtime/
+/agent_of_college_physics/config/
+/agent_of_college_physics/.runtime/
+__pycache__/
+*.py[cod]

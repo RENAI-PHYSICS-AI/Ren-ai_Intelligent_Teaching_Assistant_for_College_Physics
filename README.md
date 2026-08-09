@@ -13,7 +13,7 @@
 - 安全可视化：模型生成结构化绘图规范，由本地校验后使用 Plotly 渲染。
 - 双学习模式：在侧栏切换“智能助教”和“可视化实验”。
 - 交互实验：内置李萨如图形和声速测量两套 Julia/WGLMakie 实验。
-- 用户系统：支持注册登录、匿名进入、历史恢复及 Markdown 导出。
+- 用户系统：支持注册登录、匿名进入、历史恢复、单条回答删除及 Markdown 导出。
 - 管理后台：支持身份名册、学习活动、反馈和运行错误统计。
 - 主题与快捷操作：支持亮色、暗色、跟随系统以及随机快速提问。
 - 无模型降级：模型不可用时仍可返回本地检索结果。
@@ -85,7 +85,7 @@ flowchart LR
 │  ├─ admin_api.py          # 管理员后台
 │  ├─ data/                 # SQLite 数据库及运行数据
 │  └─ knowledge_base/       # RAG 文本块、专题索引和清单
-└─ rocky/                    # 可独立复制的 Rocky Linux 10 完整版本
+└─ agent_of_college_physics/ # 可独立复制的 Rocky Linux 10 完整版本
    ├─ install.sh            # 普通用户一键安装
    ├─ manage.sh             # 用户级服务管理
    ├─ agnet/                # Rocky 应用、数据和知识库副本
@@ -141,8 +141,8 @@ Copy-Item .\.streamlit\secrets.toml.example .\.streamlit\secrets.toml
 
 ```toml
 physics_api_key = ""
-physics_base_url = "http://模型服务地址/v1"
-physics_model = "模型 ID"
+physics_base_url = "http://192.168.222.147:1234/v1"
+physics_model = "qwen/qwen3-vl-30b"
 
 admin_username = "admin"
 admin_display_name = "课程管理员"
@@ -186,29 +186,37 @@ Rocky 版已包含应用、知识库、原始教学素材、两套实验以及�
 - 不允许使用 `sudo` 或 root 执行；
 - 不写入 `/opt`、`/etc`、`/var` 或 `/usr/local`；
 - 不修改 systemd、Nginx、SELinux 或 firewalld；
-- Python、Julia、配置、日志和 PID 均保存在 `rocky` 目录内。
+- Python、Julia、配置、日志和 PID 均保存在 `agent_of_college_physics` 目录内。
 
 ### 复制与安装
 
 在 Windows 项目根目录复制：
 
 ```powershell
-scp -r ".\rocky" 用户名@Rocky服务器IP:~/
+scp -r ".\agent_of_college_physics" 用户名@Rocky服务器IP:~/
 ```
 
 登录服务器后，以普通用户执行：
 
 ```bash
-cd ~/rocky
+cd ~/agent_of_college_physics
 bash install.sh
 ```
 
-安装完成后访问 `http://Rocky服务器IP:8501`。详细要求和故障处理见 [Rocky 部署说明](rocky/README.md)。
+安装完成后可直接访问 `http://Rocky服务器IP:8501`。当前服务器也通过反向代理提供入口
+`http://192.168.222.147:1234/agent/`；使用该子路径入口时，需要在
+`config/physics-assistant.env` 中设置：
+
+```ini
+PHYSICS_PUBLIC_BASE_URL=http://192.168.222.147:1234/agent
+```
+
+该值用于让两套内嵌实验正确生成带 `/agent/` 前缀的资源与 WebSocket 地址。详细要求和故障处理见 [Rocky 部署说明](agent_of_college_physics/README.md)。
 
 ### 服务管理
 
 ```bash
-cd ~/rocky
+cd ~/agent_of_college_physics
 bash manage.sh start
 bash manage.sh stop
 bash manage.sh restart
@@ -233,7 +241,7 @@ Rocky 版使用目录内的 Python 网关统一公开 `8501`：
 Rocky 模型配置位于：
 
 ```text
-~/rocky/config/physics-assistant.env
+~/agent_of_college_physics/config/physics-assistant.env
 ```
 
 修改后执行 `bash manage.sh restart`。
@@ -244,8 +252,8 @@ Rocky 安装脚本会在用户目录中准备 Python 3.13、项目虚拟环境�
 
 首次打开主页会先显示登录入口：
 
-- **注册用户**：登录后持续保存对话历史，可恢复会话并导出 Markdown；
-- **匿名用户**：无需注册即可进入，消息只在当前浏览器会话中保留，也可手动导出 Markdown；
+- **注册用户**：登录后持续保存对话历史，可删除任意一条回答、恢复会话并导出 Markdown；
+- **匿名用户**：无需注册即可进入，消息只在当前浏览器会话中保留，也可删除单条回答或手动导出 Markdown；
 - **管理员用户**：在同一登录页面验证账号后跳转管理员页面。
 
 注册账号、消息、反馈、身份名册和学情记录统一保存在：
@@ -278,7 +286,7 @@ cd .\agnet
 Rocky：
 
 ```bash
-cd ~/rocky
+cd ~/agent_of_college_physics
 ./agnet/.venv/bin/python ./agnet/build_kb.py
 ```
 
@@ -340,13 +348,13 @@ Rocky 的 `install.sh` 默认完成相同的初始化；可用 `PRECOMPILE_EXPER
 
 | 数据 | Windows 主项目 | Rocky 独立版 |
 | --- | --- | --- |
-| 用户与历史 | `agnet/data/assistant.db` | `rocky/agnet/data/assistant.db` |
-| RAG 文本块 | `agnet/knowledge_base/chunks.jsonl` | `rocky/agnet/knowledge_base/chunks.jsonl` |
-| 构建清单 | `agnet/knowledge_base/manifest.json` | `rocky/agnet/knowledge_base/manifest.json` |
-| 私密模型配置 | `agnet/.streamlit/secrets.toml` | `rocky/config/physics-assistant.env` |
-| Rocky 日志 | 不适用 | `rocky/.runtime/logs/` |
+| 用户与历史 | `agnet/data/assistant.db` | `agent_of_college_physics/agnet/data/assistant.db` |
+| RAG 文本块 | `agnet/knowledge_base/chunks.jsonl` | `agent_of_college_physics/agnet/knowledge_base/chunks.jsonl` |
+| 构建清单 | `agnet/knowledge_base/manifest.json` | `agent_of_college_physics/agnet/knowledge_base/manifest.json` |
+| 私密模型配置 | `agnet/.streamlit/secrets.toml` | `agent_of_college_physics/config/physics-assistant.env` |
+| Rocky 日志 | 不适用 | `agent_of_college_physics/.runtime/logs/` |
 
-Rocky 文件夹是某次迁移时生成的完整快照。Windows 版后续新增的账号、历史、教材或知识库不会自动进入 Rocky 版；需要重新执行安全迁移或有选择地同步相应数据文件。迁移数据库时应先停止写入，或使用 SQLite 在线备份，避免复制到不一致的 WAL 状态。
+`agent_of_college_physics` 文件夹是某次迁移时生成的完整快照。Windows 版后续新增的账号、历史、教材或知识库不会自动进入 Rocky 版；需要重新执行安全迁移或有选择地同步相应数据文件。迁移数据库时应先停止写入，或使用 SQLite 在线备份，避免复制到不一致的 WAL 状态。
 
 迁移前可检查源码、知识库和 SQLite 数据中是否写死 Windows 盘符：
 
@@ -388,7 +396,7 @@ Stop-Process -Id <OwningProcess>
 ### Rocky 重启后网页无法访问
 
 ```bash
-cd ~/rocky
+cd ~/agent_of_college_physics
 bash manage.sh start
 ```
 

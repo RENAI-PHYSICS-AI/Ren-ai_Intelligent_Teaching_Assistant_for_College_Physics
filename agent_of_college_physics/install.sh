@@ -16,6 +16,9 @@ CONFIG_ROOT="$APP_ROOT/config"
 JULIA_VERSION="${JULIA_VERSION:-1.10.10}"
 PYTHON_VERSION="${PYTHON_VERSION:-3.13}"
 PRECOMPILE_EXPERIMENTS="${PRECOMPILE_EXPERIMENTS:-1}"
+CJK_FONT_URL="https://raw.githubusercontent.com/notofonts/noto-cjk/Sans2.004/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf"
+CJK_FONT_SHA256="2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b"
+CJK_FONT_PATH="$RUNTIME_ROOT/fonts/NotoSansCJKsc-Regular.otf"
 
 for required in \
   "$APP_ROOT/agnet/app.py" \
@@ -41,13 +44,28 @@ mkdir -p \
   "$RUNTIME_ROOT/tmp" \
   "$RUNTIME_ROOT/uv-cache" \
   "$RUNTIME_ROOT/python" \
+  "$RUNTIME_ROOT/fonts" \
   "$RUNTIME_ROOT/julia-depot" \
   "$RUNTIME_ROOT/experiment-output/sound-speed" \
   "$CONFIG_ROOT" \
   "$APP_ROOT/agnet/runtime" \
   "$APP_ROOT/agnet/experiments/sound_speed/output"
 
-echo "[1/6] 在用户目录安装 uv 与 Python ${PYTHON_VERSION}……"
+echo "[1/7] 在项目目录准备中文字体……"
+if ! printf '%s  %s\n' "$CJK_FONT_SHA256" "$CJK_FONT_PATH" | \
+    sha256sum --check --status 2>/dev/null; then
+  font_tmp="$(mktemp "$RUNTIME_ROOT/tmp/physics-font.XXXXXX")"
+  if ! curl --fail --location --retry 3 "$CJK_FONT_URL" -o "$font_tmp"; then
+    rm -f -- "$font_tmp"
+    echo "Noto Sans CJK 字体下载失败。" >&2
+    exit 1
+  fi
+  printf '%s  %s\n' "$CJK_FONT_SHA256" "$font_tmp" | sha256sum --check --strict
+  mv -- "$font_tmp" "$CJK_FONT_PATH"
+fi
+export PHYSICS_CJK_FONT="${PHYSICS_CJK_FONT:-$CJK_FONT_PATH}"
+
+echo "[2/7] 在用户目录安装 uv 与 Python ${PYTHON_VERSION}……"
 UV_BIN="$RUNTIME_ROOT/bin/uv"
 if [[ ! -x "$UV_BIN" ]]; then
   curl -LsSf https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="$RUNTIME_ROOT/bin" sh
@@ -59,7 +77,7 @@ fi
 env UV_CACHE_DIR="$RUNTIME_ROOT/uv-cache" UV_PYTHON_INSTALL_DIR="$RUNTIME_ROOT/python" \
   "$UV_BIN" pip sync --python "$APP_ROOT/agnet/.venv/bin/python" "$APP_ROOT/requirements.lock"
 
-echo "[2/6] 在用户目录安装 Julia ${JULIA_VERSION}……"
+echo "[3/7] 在用户目录安装 Julia ${JULIA_VERSION}……"
 JULIA_HOME="$RUNTIME_ROOT/julia-${JULIA_VERSION}"
 JULIA_BIN="$JULIA_HOME/bin/julia"
 if [[ ! -x "$JULIA_BIN" ]]; then
@@ -92,7 +110,7 @@ if [[ ! -x "$JULIA_BIN" ]]; then
 fi
 ln -sfn "$JULIA_BIN" "$RUNTIME_ROOT/bin/julia"
 
-echo "[3/6] 创建用户级运行配置……"
+echo "[4/7] 创建用户级运行配置……"
 CONFIG_FILE="$CONFIG_ROOT/physics-assistant.env"
 if [[ ! -f "$CONFIG_FILE" ]]; then
   cp "$APP_ROOT/physics-assistant.env.example" "$CONFIG_FILE"
@@ -101,7 +119,7 @@ chmod 600 "$CONFIG_FILE" "$APP_ROOT/agnet/data/assistant.db" 2>/dev/null || true
 [[ -f "$APP_ROOT/agnet/data/admin_signing_secret" ]] && \
   chmod 600 "$APP_ROOT/agnet/data/admin_signing_secret"
 
-echo "[4/6] 检查迁移管理员……"
+echo "[5/7] 检查迁移管理员……"
 database="$APP_ROOT/agnet/data/assistant.db"
 has_admin="$($APP_ROOT/agnet/.venv/bin/python -c '
 import sqlite3, sys
@@ -140,7 +158,7 @@ analytics_db.ensure_admin_user(os.environ["PHYSICS_BOOTSTRAP_ADMIN_USERNAME"], p
   unset password confirmation BOOTSTRAP_ADMIN_PASSWORD
 fi
 
-echo "[5/6] 初始化可视化实验……"
+echo "[6/7] 初始化可视化实验……"
 if [[ "$PRECOMPILE_EXPERIMENTS" == "1" ]]; then
   for experiment in lissajous sound_speed; do
     env HOME="$HOME" JULIA_DEPOT_PATH="$RUNTIME_ROOT/julia-depot" \
@@ -155,7 +173,7 @@ else
   echo "已按 PRECOMPILE_EXPERIMENTS=0 跳过 Julia 预编译。"
 fi
 
-echo "[6/6] 启动用户级服务……"
+echo "[7/7] 启动用户级服务……"
 chmod 700 "$APP_ROOT/install.sh" "$APP_ROOT/manage.sh"
 "$APP_ROOT/manage.sh" restart
 

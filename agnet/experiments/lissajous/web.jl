@@ -20,6 +20,7 @@ const ACCENT_MINOR = RGBf(0.36, 0.82, 0.55)
 const PANEL_BG = RGBf(0.075, 0.085, 0.105)
 const MUTED = RGBf(0.58, 0.62, 0.70)
 const BUTTON_BG = RGBf(0.13, 0.15, 0.19)
+const CJK_PROBE_TEXT = "中文相位差实验"
 const WGL_SHADER_FILES = (
     "mesh.frag",
     "mesh.vert",
@@ -46,9 +47,23 @@ function load_packaged_wgl_shaders!()
     return true
 end
 
-function first_existing_font(candidates)
+function font_supports_cjk(path)
+    try
+        font = WGLMakie.Makie.FreeTypeAbstraction.FTFont(String(path))
+        return all(
+            character -> WGLMakie.Makie.FreeTypeAbstraction.glyph_index(font, character) != 0,
+            CJK_PROBE_TEXT,
+        )
+    catch
+        return false
+    end
+end
+
+function first_cjk_font(candidates)
     for candidate in candidates
-        !isnothing(candidate) && !isempty(candidate) && isfile(candidate) && return candidate
+        isnothing(candidate) && continue
+        path = String(candidate)
+        !isempty(path) && isfile(path) && font_supports_cjk(path) && return path
     end
     return nothing
 end
@@ -58,15 +73,21 @@ function fontconfig_match(pattern)
     isnothing(executable) && return nothing
     try
         output = read(Cmd([executable, "-f", "%{file}\n", pattern]), String)
-        candidates = [strip(line) for line in split(output, '\n') if !isempty(strip(line))]
-        return isempty(candidates) ? nothing : first_existing_font(candidates)
+        candidates = [String(strip(line)) for line in split(output, '\n') if !isempty(strip(line))]
+        return isempty(candidates) ? nothing : first_cjk_font(candidates)
     catch
         return nothing
     end
 end
 
 function configure_theme!()
-    app_font = normpath(
+    runtime_font = normpath(
+        joinpath(LAB_DIR, "..", "..", "..", ".runtime", "fonts", "NotoSansCJKsc-Regular.otf"),
+    )
+    bundled_font = normpath(
+        joinpath(LAB_DIR, "..", "..", "assets", "fonts", "NotoSansCJKsc-Regular.otf"),
+    )
+    julia_font = normpath(
         joinpath(
             Sys.BINDIR,
             "..",
@@ -76,35 +97,38 @@ function configure_theme!()
             "NotoSansCJKsc-Regular.otf",
         ),
     )
-    regular = first_existing_font([
+    regular = first_cjk_font([
         get(ENV, "PHYSICS_CJK_FONT", ""),
-        app_font,
+        runtime_font,
+        bundled_font,
+        julia_font,
         isempty(get(ENV, "WINDIR", "")) ? "" : joinpath(ENV["WINDIR"], "Fonts", "msyh.ttc"),
         "/System/Library/Fonts/PingFang.ttc",
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/google-noto-cjk-fonts/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/google-noto-vf/NotoSansCJK-VF.ttf",
-        fontconfig_match("Noto Sans CJK SC"),
+        fontconfig_match("Noto Sans CJK SC:lang=zh-cn"),
     ])
-    bold = first_existing_font([
+    isnothing(regular) && error(
+        "未找到真正包含中文字形的字体。请重新执行 install.sh，或通过 PHYSICS_CJK_FONT 指定 Noto Sans CJK SC 字体文件。",
+    )
+    bold = first_cjk_font([
         get(ENV, "PHYSICS_CJK_FONT", ""),
-        app_font,
+        runtime_font,
+        bundled_font,
+        julia_font,
         isempty(get(ENV, "WINDIR", "")) ? "" : joinpath(ENV["WINDIR"], "Fonts", "msyhbd.ttc"),
         "/System/Library/Fonts/PingFang.ttc",
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
         "/usr/share/fonts/noto-cjk/NotoSansCJK-Bold.ttc",
-        fontconfig_match("Noto Sans CJK SC Bold"),
+        fontconfig_match("Noto Sans CJK SC Bold:lang=zh-cn"),
     ])
-    font_settings = if isnothing(regular)
-        NamedTuple()
-    else
-        isnothing(bold) && (bold = regular)
-        (; fonts = (; regular, bold))
-    end
+    isnothing(bold) && (bold = regular)
     set_theme!(
         theme_dark();
-        font_settings...,
+        font = regular,
+        fonts = (; regular, bold),
         fontsize = 15,
         backgroundcolor = RGBf(0.045, 0.050, 0.065),
         Axis = (
@@ -742,7 +766,9 @@ function main()
     # Relative asset and WebSocket URLs work for both localhost and LAN clients.
     # A fixed 127.0.0.1 proxy URL would make every remote browser connect to
     # itself instead of to the teaching server.
-    server = Bonito.Server(host, port; proxy_url = ".")
+    proxy_url = strip(get(ENV, "LISSAJOUS_WEB_PROXY_URL", "."))
+    isempty(proxy_url) && (proxy_url = ".")
+    server = Bonito.Server(host, port; proxy_url = proxy_url)
     Bonito.route!(server, "/__physics_health__" => health_app())
     Bonito.route!(server, "/" => index_app())
     Bonito.route!(server, "/phase" => experiment_app("相位差", phase_figure))

@@ -67,7 +67,7 @@ def audit_source_text(errors: list[str]) -> None:
 
 
 def audit_knowledge_base(errors: list[str]) -> None:
-    for app_root in (ROOT / "agnet", ROOT / "rocky" / "agnet"):
+    for app_root in (ROOT / "agnet", ROOT / "agent_of_college_physics" / "agnet"):
         chunks = app_root / "knowledge_base" / "chunks.jsonl"
         if not chunks.is_file():
             continue

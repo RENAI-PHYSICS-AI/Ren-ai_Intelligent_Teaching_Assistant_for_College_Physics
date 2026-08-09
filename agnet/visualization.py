@@ -414,7 +414,12 @@ def _animation_media(spec_json: str, output_format: str) -> bytes:
             Path(temporary_path).unlink(missing_ok=True)
 
 
-def render_visualizations(specs: list[dict[str, Any]]) -> None:
+def render_visualizations(
+    specs: list[dict[str, Any]],
+    *,
+    key_prefix: str = "",
+) -> None:
+    widget_prefix = f"{key_prefix}_" if key_prefix else ""
     for index, spec in enumerate(specs):
         try:
             figure = _figure(spec)
@@ -425,7 +430,7 @@ def render_visualizations(specs: list[dict[str, Any]]) -> None:
                 st.caption("代码已在受限的可视化环境中运行，可缩放、悬停查看数值或切换曲线。")
                 st.plotly_chart(
                     figure,
-                    key=f"physics_viz_{index}_{abs(hash(json.dumps(spec, sort_keys=True, ensure_ascii=False)))}",
+                    key=f"{widget_prefix}physics_viz_{index}_{abs(hash(json.dumps(spec, sort_keys=True, ensure_ascii=False)))}",
                     width="stretch",
                     config={"displaylogo": False, "responsive": True},
                     theme="streamlit",
@@ -452,7 +457,7 @@ def render_visualizations(specs: list[dict[str, Any]]) -> None:
                         st.download_button(
                             f"下载 {media_format.upper()}", data=media,
                             file_name=f"physics_animation.{media_format}", mime=mime,
-                            key=f"physics_media_{media_format}_{index}_{abs(hash(json.dumps(spec, sort_keys=True, ensure_ascii=False)))}",
+                            key=f"{widget_prefix}physics_media_{media_format}_{index}_{abs(hash(json.dumps(spec, sort_keys=True, ensure_ascii=False)))}",
                             use_container_width=True,
                         )
         except Exception as exc:

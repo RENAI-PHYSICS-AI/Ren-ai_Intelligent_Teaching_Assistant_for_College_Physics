@@ -4,7 +4,7 @@
 
 回答策略以本地教材与 RAG 知识库为核心，同时由模型服务检索可靠网络内容进行补充；应用自身不运行独立网页爬虫。该策略固定启用，不提供用户开关。
 
-Rocky Linux 10（纯 CPU）版本位于仓库根目录的 [rocky/](../rocky/README.md)，对外端口仍为 `8501`。
+Rocky Linux 10（纯 CPU）版本位于仓库根目录的 [agent_of_college_physics/](../agent_of_college_physics/README.md)，对外端口仍为 `8501`。
 
 快速启动：
 

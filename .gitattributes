@@ -3,9 +3,9 @@
 *.pptx filter=lfs diff=lfs merge=lfs -text
 *.mp4 filter=lfs diff=lfs merge=lfs -text
 *.zip filter=lfs diff=lfs merge=lfs -text
-rocky/*.sh text eol=lf
-rocky/**/*.service text eol=lf
-rocky/**/*.conf text eol=lf
-rocky/*.example text eol=lf
-rocky/*.in text eol=lf
-rocky/*.lock text eol=lf
+agent_of_college_physics/*.sh text eol=lf
+agent_of_college_physics/**/*.service text eol=lf
+agent_of_college_physics/**/*.conf text eol=lf
+agent_of_college_physics/*.example text eol=lf
+agent_of_college_physics/*.in text eol=lf
+agent_of_college_physics/*.lock text eol=lf

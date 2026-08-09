@@ -150,20 +150,22 @@ def _serialize_images(images: list[dict]) -> str:
     return json.dumps(serializable, ensure_ascii=False)
 
 
-def _deserialize_images(raw: str) -> list[dict]:
+def _deserialize_images(raw: str, include_data: bool = True) -> list[dict]:
     images = []
     for image in json.loads(raw or "[]"):
-        try:
-            data = base64.b64decode(image.get("data", ""))
-        except (ValueError, TypeError):
-            data = b""
-        images.append({**image, "data": data})
+        item = {key: value for key, value in image.items() if key != "data"}
+        if include_data:
+            try:
+                item["data"] = base64.b64decode(image.get("data", ""))
+            except (ValueError, TypeError):
+                item["data"] = b""
+        images.append(item)
     return images
 
 
-def save_message(user_id: int, message: dict) -> None:
+def save_message(user_id: int, message: dict) -> int:
     with _connect() as connection:
-        connection.execute(
+        cursor = connection.execute(
             """
             INSERT INTO messages(user_id, role, content, images_json, visualizations_json, interaction_id)
             VALUES (?, ?, ?, ?, ?, ?)
@@ -177,28 +179,131 @@ def save_message(user_id: int, message: dict) -> None:
                 message.get("interaction_id"),
             ),
         )
+        message_id = int(cursor.lastrowid)
+        return message_id
 
 
-def load_messages(user_id: int) -> list[dict]:
+def load_messages(user_id: int, include_image_data: bool = True) -> list[dict]:
     with _connect() as connection:
         rows = connection.execute(
             """
-            SELECT role, content, images_json, visualizations_json, interaction_id, created_at
+            SELECT id, role, content, images_json, visualizations_json, interaction_id, created_at
             FROM messages WHERE user_id = ? ORDER BY id
             """,
             (user_id,),
         ).fetchall()
     return [
         {
+            "id": row["id"],
             "role": row["role"],
             "content": row["content"],
-            "images": _deserialize_images(row["images_json"]),
+            "images": _deserialize_images(row["images_json"], include_image_data),
             "visualizations": json.loads(row["visualizations_json"] or "[]"),
             "interaction_id": row["interaction_id"],
             "created_at": row["created_at"],
         }
         for row in rows
     ]
+
+
+def load_messages_page(
+    user_id: int,
+    *,
+    before_id: int | None = None,
+    limit: int = 8,
+) -> tuple[list[dict], bool]:
+    """Load one newest-first database page and return it in chat order."""
+    page_size = max(1, min(int(limit), 100))
+    parameters: list[int] = [int(user_id)]
+    before_clause = ""
+    if before_id is not None:
+        before_clause = "AND id < ?"
+        parameters.append(int(before_id))
+    parameters.append(page_size + 1)
+    with _connect() as connection:
+        rows = connection.execute(
+            f"""
+            SELECT id, role, content, visualizations_json, interaction_id, created_at,
+                   CASE WHEN COALESCE(TRIM(images_json), '[]') <> '[]'
+                        THEN 1 ELSE 0 END AS has_images
+            FROM messages
+            WHERE user_id = ? {before_clause}
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            parameters,
+        ).fetchall()
+    has_more = len(rows) > page_size
+    selected = rows[:page_size]
+    messages = [
+        {
+            "id": row["id"],
+            "role": row["role"],
+            "content": row["content"],
+            "images": [],
+            "_has_images": bool(row["has_images"]),
+            "visualizations": json.loads(row["visualizations_json"] or "[]"),
+            "interaction_id": row["interaction_id"],
+            "created_at": row["created_at"],
+        }
+        for row in reversed(selected)
+    ]
+    return messages, has_more
+
+
+def load_message_images(user_id: int, message_id: int) -> list[dict]:
+    """Decode attachments for one visible message only."""
+    with _connect() as connection:
+        row = connection.execute(
+            "SELECT images_json FROM messages WHERE id = ? AND user_id = ?",
+            (int(message_id), int(user_id)),
+        ).fetchone()
+    if row is None:
+        return []
+    return _deserialize_images(row["images_json"])
+
+
+def load_context_messages(
+    user_id: int,
+    *,
+    before_id: int | None = None,
+    limit: int = 80,
+) -> list[dict]:
+    """Load recent text-only messages for the model without UI media payloads."""
+    context_limit = max(2, min(int(limit), 200))
+    parameters: list[int] = [int(user_id)]
+    before_clause = ""
+    if before_id is not None:
+        before_clause = "AND id < ?"
+        parameters.append(int(before_id))
+    parameters.append(context_limit)
+    with _connect() as connection:
+        rows = connection.execute(
+            f"""
+            SELECT role, content
+            FROM messages
+            WHERE user_id = ? {before_clause}
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            parameters,
+        ).fetchall()
+    messages = [
+        {"role": row["role"], "content": row["content"]}
+        for row in reversed(rows)
+    ]
+    while messages and messages[0]["role"] != "user":
+        messages.pop(0)
+    return messages
+
+
+def delete_message(user_id: int, message_id: int) -> bool:
+    with _connect() as connection:
+        cursor = connection.execute(
+            "DELETE FROM messages WHERE id = ? AND user_id = ?",
+            (message_id, user_id),
+        )
+        return cursor.rowcount > 0
 
 
 def clear_messages(user_id: int) -> None:
