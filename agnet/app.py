@@ -16,6 +16,7 @@ import analytics_db
 from config import APP_DIR, KB_FILE, setting
 from experiment_hub import render_experiment_hub
 from llm import plan_visualization, stream_answer, visualization_requested
+from proxy_paths import with_public_prefix
 from rag import KnowledgeBase, context_text
 from storage import (
     authenticate,
@@ -31,6 +32,7 @@ from storage import (
     save_message,
 )
 from visualization import apply_requested_media_format, extract_visualizations, render_visualizations
+from voice_input import render_voice_input
 
 st.set_page_config(page_title="大学物理智能助教", page_icon="⚛️", layout="wide", initial_sidebar_state="expanded")
 
@@ -215,6 +217,8 @@ if "_history_paged_user_id" not in st.session_state:
     st.session_state._history_paged_user_id = None
 if "_analytics_last_touch" not in st.session_state:
     st.session_state._analytics_last_touch = 0.0
+if "_voice_commit_id" not in st.session_state:
+    st.session_state._voice_commit_id = None
 
 HISTORY_PAGE_SIZE = 8
 
@@ -253,8 +257,10 @@ def admin_login_target() -> str:
             APP_DIR / "data" / "admin_signing_secret"
         )
     )
-    admin_login_url = setting(
-        "ADMIN_LOGIN_URL", "/admin-login"
+    admin_login_url = with_public_prefix(
+        setting("ADMIN_LOGIN_URL", "/admin-login"),
+        setting("PHYSICS_PUBLIC_BASE_URL", ""),
+        setting("PHYSICS_GATEWAY_PUBLIC_PREFIX", ""),
     )
     ticket = admin_auth.issue_token(
         admin_token, st.session_state.username, "admin-login", 60
@@ -822,14 +828,28 @@ if not st.session_state.messages:
       </ul>
       <div class="course-map"><b>力学与热学：</b>运动、动力学、刚体、振动与波、气体动理论、热力学</div>
       <div class="course-map"><b>电磁与近代物理：</b>静电场、磁场、电磁感应、波动光学、量子物理</div>
-      <div class="tip">💡 支持LaTeX公式、图片识题和交互式物理图表。</div>
+      <div class="tip">💡 支持LaTeX公式、图片识题、Paraformer流式语音输入和交互式物理图表。</div>
     </div>
     """, unsafe_allow_html=True)
+voice_commit = render_voice_input(
+    disabled=bool(st.session_state.get("_answer_in_progress")),
+)
+if voice_commit:
+    commit_id = str(voice_commit.get("id") or "")
+    commit_text = str(voice_commit.get("text") or "").strip()
+    if commit_id and commit_text and commit_id != st.session_state._voice_commit_id:
+        st.session_state._voice_commit_id = commit_id
+        st.session_state["physics_chat_input"] = commit_text
+        # Recreate the fixed bottom chat input after the component event so
+        # mobile browsers receive the draft value reliably.
+        st.rerun()
 typed_input = st.chat_input(
     "输入问题，或将题目图片直接粘贴到这里……",
+    key="physics_chat_input",
     accept_file="multiple",
     file_type=["png", "jpg", "jpeg", "webp"],
     max_upload_size=20,
+    submit_mode="disable",
     on_submit=mark_answer_in_progress,
 )
 uploaded_images = []

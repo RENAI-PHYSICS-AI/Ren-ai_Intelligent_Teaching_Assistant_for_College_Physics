@@ -22,6 +22,22 @@ export PHYSICS_JULIA_EXE="${PHYSICS_JULIA_EXE:-$RUNTIME_ROOT/bin/julia}"
 export JULIA_DEPOT_PATH="${JULIA_DEPOT_PATH:-$RUNTIME_ROOT/julia-depot}"
 export PHYSICS_SOUND_SPEED_OUTPUT_DIR="${PHYSICS_SOUND_SPEED_OUTPUT_DIR:-$RUNTIME_ROOT/experiment-output/sound-speed}"
 export PHYSICS_CJK_FONT="${PHYSICS_CJK_FONT:-$RUNTIME_ROOT/fonts/NotoSansCJKsc-Regular.otf}"
+export PHYSICS_ASR_MODEL_DIR="${PHYSICS_ASR_MODEL_DIR:-$RUNTIME_ROOT/models/paraformer-zh-streaming}"
+if [[ "$PHYSICS_ASR_MODEL_DIR" != /* ]]; then
+  export PHYSICS_ASR_MODEL_DIR="$APP_ROOT/${PHYSICS_ASR_MODEL_DIR#./}"
+fi
+export PHYSICS_ASR_PORT="${PHYSICS_ASR_PORT:-8604}"
+export PHYSICS_ASR_UPSTREAM="http://127.0.0.1:$PHYSICS_ASR_PORT"
+export PHYSICS_GATEWAY_HTTPS_PORT="${PHYSICS_GATEWAY_HTTPS_PORT:-}"
+export PHYSICS_GATEWAY_TLS_CERT="${PHYSICS_GATEWAY_TLS_CERT:-$APP_ROOT/config/tls/server.crt}"
+export PHYSICS_GATEWAY_TLS_KEY="${PHYSICS_GATEWAY_TLS_KEY:-$APP_ROOT/config/tls/server.key}"
+export PHYSICS_GATEWAY_PUBLIC_PREFIX="${PHYSICS_GATEWAY_PUBLIC_PREFIX:-/agent}"
+if [[ "$PHYSICS_GATEWAY_TLS_CERT" != /* ]]; then
+  export PHYSICS_GATEWAY_TLS_CERT="$APP_ROOT/${PHYSICS_GATEWAY_TLS_CERT#./}"
+fi
+if [[ "$PHYSICS_GATEWAY_TLS_KEY" != /* ]]; then
+  export PHYSICS_GATEWAY_TLS_KEY="$APP_ROOT/${PHYSICS_GATEWAY_TLS_KEY#./}"
+fi
 
 pid_alive() {
   local name="$1" pid_file="$PID_DIR/$1.pid" pid
@@ -61,17 +77,48 @@ wait_url() {
   return 1
 }
 
+wait_https_url() {
+  local url="$1" label="$2"
+  for _ in {1..60}; do
+    curl --insecure --fail --silent "$url" >/dev/null 2>&1 && return 0
+    sleep 1
+  done
+  echo "$label 健康检查超时：$url" >&2
+  return 1
+}
+
 start_all() {
   [[ -x "$PYTHON" ]] || { echo "尚未安装，请先执行 bash install.sh" >&2; return 1; }
   start_one admin "$PYTHON" -m uvicorn admin_api:app \
     --host 127.0.0.1 --port 8603 --proxy-headers --forwarded-allow-ips=127.0.0.1
+  start_one asr "$PYTHON" -m uvicorn asr_service:app \
+    --host 127.0.0.1 --port "$PHYSICS_ASR_PORT" \
+    --proxy-headers --forwarded-allow-ips=127.0.0.1
   start_one web "$APP_ROOT/agnet/.venv/bin/streamlit" run app.py \
     --server.address=127.0.0.1 --server.port=8502 --server.headless=true \
     --server.fileWatcherType=none --browser.gatherUsageStats=false
   wait_url http://127.0.0.1:8603/health "管理员服务"
+  wait_url http://127.0.0.1:"$PHYSICS_ASR_PORT"/health "Paraformer 语音服务"
   wait_url http://127.0.0.1:8502/_stcore/health "智能助教"
-  start_one gateway "$PYTHON" gateway.py
+  start_one gateway env PHYSICS_GATEWAY_TLS_CERT= PHYSICS_GATEWAY_TLS_KEY= \
+    "$PYTHON" gateway.py
   wait_url http://127.0.0.1:8501/_stcore/health "8501 统一入口"
+  if [[ -n "$PHYSICS_GATEWAY_HTTPS_PORT" ]]; then
+    [[ -r "$PHYSICS_GATEWAY_TLS_CERT" ]] || {
+      echo "HTTPS 证书不可读：$PHYSICS_GATEWAY_TLS_CERT" >&2
+      return 1
+    }
+    [[ -r "$PHYSICS_GATEWAY_TLS_KEY" ]] || {
+      echo "HTTPS 私钥不可读：$PHYSICS_GATEWAY_TLS_KEY" >&2
+      return 1
+    }
+    start_one gateway_https env \
+      PHYSICS_GATEWAY_PORT="$PHYSICS_GATEWAY_HTTPS_PORT" \
+      "$PYTHON" gateway.py
+    wait_https_url \
+      "https://127.0.0.1:$PHYSICS_GATEWAY_HTTPS_PORT$PHYSICS_GATEWAY_PUBLIC_PREFIX/_stcore/health" \
+      "$PHYSICS_GATEWAY_HTTPS_PORT HTTPS 统一入口"
+  fi
 }
 
 stop_one() {
@@ -133,7 +180,7 @@ stop_experiments() {
 
 status_all() {
   local name
-  for name in admin web gateway; do
+  for name in admin asr web gateway gateway_https; do
     if pid_alive "$name"; then
       echo "$name: 运行中（PID $(cat "$PID_DIR/$name.pid")）"
     else
@@ -145,16 +192,23 @@ status_all() {
 check_all() {
   curl --fail --silent --show-error http://127.0.0.1:8502/_stcore/health; printf '\n'
   curl --fail --silent --show-error http://127.0.0.1:8603/health; printf '\n'
+  curl --fail --silent --show-error http://127.0.0.1:"$PHYSICS_ASR_PORT"/health; printf '\n'
   curl --fail --silent --show-error http://127.0.0.1:8501/agent-health/admin; printf '\n'
+  curl --fail --silent --show-error http://127.0.0.1:8501/asr/health; printf '\n'
   curl --fail --silent --show-error http://127.0.0.1:8501/_stcore/health; printf '\n'
+  if [[ -n "$PHYSICS_GATEWAY_HTTPS_PORT" ]]; then
+    curl --insecure --fail --silent --show-error \
+      "https://127.0.0.1:$PHYSICS_GATEWAY_HTTPS_PORT$PHYSICS_GATEWAY_PUBLIC_PREFIX/asr/health"
+    printf '\n'
+  fi
 }
 
 case "${1:-status}" in
   start) start_all ;;
-  stop) stop_one gateway; stop_one web; stop_experiments; stop_one admin ;;
+  stop) stop_one gateway_https; stop_one gateway; stop_one web; stop_experiments; stop_one asr; stop_one admin ;;
   restart) bash "$APP_ROOT/manage.sh" stop; bash "$APP_ROOT/manage.sh" start ;;
   status) status_all ;;
-  logs) tail -n 100 -F "$LOG_DIR"/admin.log "$LOG_DIR"/web.log "$LOG_DIR"/gateway.log ;;
+  logs) tail -n 100 -F "$LOG_DIR"/admin.log "$LOG_DIR"/asr.log "$LOG_DIR"/web.log "$LOG_DIR"/gateway.log "$LOG_DIR"/gateway_https.log ;;
   check) check_all ;;
   *) echo "用法：$0 {start|stop|restart|status|logs|check}" >&2; exit 2 ;;
 esac

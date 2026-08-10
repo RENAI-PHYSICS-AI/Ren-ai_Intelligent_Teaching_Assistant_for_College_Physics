@@ -1,6 +1,6 @@
 # 大学物理智能助教
 
-面向大学物理课程的本地 RAG 智能助教。项目以祝之光《物理学》第 5 版及配套习题解答为主要依据，并使用课程资料和实验专题知识作为补充，支持教材检索、概念讲解、公式推导、图片识题、历史对话和交互式物理实验。
+面向大学物理课程的本地 RAG 智能助教。项目以祝之光《物理学》第 5 版及配套习题解答为主要依据，并使用课程资料和实验专题知识作为补充，支持教材检索、概念讲解、公式推导、图片识题、流式语音输入、历史对话和交互式物理实验。
 
 > 回答以本地知识库为核心，同时由模型服务检索并整合可靠的网络内容作为补充。应用不单独运行网页爬虫，教材课程口径与网络资料不一致时以教材为准。
 
@@ -9,6 +9,7 @@
 - 本地 RAG：检索教材、习题解答、课件及实验专题知识。
 - 网络内容补充：由模型检索知识库未覆盖的背景、最新进展与拓展内容，并与教材结论整合。
 - 多模态问答：可直接粘贴或上传题目图片。
+- 实时语音输入：浏览器录音经 Paraformer-zh-streaming 在本机逐段转写，最终文字填入提问框供确认。
 - 流式讲解：支持连续对话、LaTeX 公式和回答位置跟随。
 - 安全可视化：模型生成结构化绘图规范，由本地校验后使用 Plotly 渲染。
 - 双学习模式：在侧栏切换“智能助教”和“可视化实验”。
@@ -19,6 +20,10 @@
 - 无模型降级：模型不可用时仍可返回本地检索结果。
 
 ## 知识库
+
+### 检索性能
+
+本地 BM25 检索使用倒排索引和预缓存词频。查询时只计算包含查询词的候选文本块，并使用 Top-K 堆排序，避免每次扫描全部知识块。首次加载会读取 JSONL 并建立索引，之后由 Streamlit 资源缓存复用；知识库更新后重启应用即可刷新索引。
 
 当前构建清单来自 `agnet/knowledge_base/manifest.json`：
 
@@ -41,6 +46,8 @@ flowchart LR
     A[教材、课件与实验专题] --> B[解析、分块与优先级标记]
     B --> C[本地 BM25 知识库]
     D[文字或图片问题] --> E[Streamlit 用户界面]
+    P[浏览器麦克风] --> Q[Paraformer 流式语音识别]
+    Q --> E
     E --> C
     C --> F[相关教材上下文]
     E --> G[历史消息与当前问题]
@@ -79,6 +86,9 @@ flowchart LR
 │  ├─ visualization.py      # 可视化规范校验和绘图
 │  ├─ experiment_hub.py     # 实验启动与嵌入
 │  ├─ gateway.py            # 8501 同源入口及内嵌实验代理
+│  ├─ voice_input.py        # 浏览器录音与流式转写组件
+│  ├─ asr_service.py        # Paraformer 内部 WebSocket 服务
+│  ├─ download_asr_model.py # 固定版本 INT8 模型下载与校验
 │  ├─ experiments/          # 两套 Julia/WGLMakie 实验
 │  ├─ storage.py            # 用户、会话和 Markdown 导出
 │  ├─ analytics_db.py       # 学情与反馈数据
@@ -103,6 +113,7 @@ Windows 版和 Rocky 版是两套独立部署。修改其中一套的运行数�
 - [uv](https://docs.astral.sh/uv/)；
 - Julia 1.10，仅可视化实验需要；
 - 支持 WebGL2 的现代浏览器；
+- 使用麦克风时需要浏览器认可的安全来源（`localhost` 或可信 HTTPS）；
 - OpenAI Chat Completions 兼容的文本或视觉模型服务。
 
 Poppler 用于提取 PDF 文本；WPS Office 可帮助解析旧式 `.doc`、`.ppt` 和 `.pot` 文件。现成知识库无需重新安装这些解析工具。
@@ -120,7 +131,7 @@ cd .\agnet
 http://localhost:8501
 ```
 
-`start_all.ps1` 同时启动主应用和管理员服务。只启动主应用时可运行 `start.ps1` 或双击 `start.bat`。
+`start_all.ps1` 同时启动主应用、管理员服务和语音识别服务。只启动主应用时可运行 `start.ps1` 或双击 `start.bat`。首次启动会下载并校验约 226.5 MiB 的 Paraformer 流式 INT8 模型；模型保存在 `agnet/runtime/asr/`，不会重复下载。
 
 Windows 版端口：
 
@@ -129,6 +140,7 @@ Windows 版端口：
 | 对外统一入口 | `0.0.0.0:8501` |
 | Streamlit 内部服务 | 仅监听本机 |
 | 管理员内部服务 | 仅监听本机 |
+| Paraformer 语音服务 | `127.0.0.1:8604`，由 `8501/asr/...` 代理 |
 | 李萨如与声速实验 | 仅监听本机，通过 `8501/experiments/...` 内嵌 |
 
 ### 模型及管理员配置
@@ -142,7 +154,7 @@ Copy-Item .\.streamlit\secrets.toml.example .\.streamlit\secrets.toml
 ```toml
 physics_api_key = ""
 physics_base_url = "http://192.168.222.147:1234/v1"
-physics_model = "qwen/qwen3-vl-30b"
+physics_model = "qwen/qwen3.6-27b"
 
 admin_username = "admin"
 admin_display_name = "课程管理员"
@@ -150,6 +162,8 @@ admin_password = "至少 12 位的独立强密码"
 admin_token = "足够长的随机令牌"
 admin_login_url = "/admin-login"
 ```
+
+当前对话与图片识别统一使用 LM Link 设备 `tianwen` 上的 `qwen/qwen3.6-27b`；API 入口根据模型 ID 自动路由到该设备。
 
 不要把 `secrets.toml`、API Key、密码或内网令牌提交到 Git。
 
@@ -166,6 +180,9 @@ admin_login_url = "/admin-login"
 | `PHYSICS_MAX_OUTPUT_TOKENS` | 单次回答最大输出 token 数 |
 | `PHYSICS_JULIA_EXE` | Julia 可执行文件路径 |
 | `PHYSICS_CJK_FONT` | Rocky 上可选的中文字体文件 |
+| `PHYSICS_ASR_THREADS` | Paraformer 单批 CPU 推理线程数，默认 4 |
+| `PHYSICS_ASR_MAX_CONNECTIONS` | 同时语音连接上限，默认 4 |
+| `PHYSICS_ASR_MAX_AUDIO_SECONDS` | 单次录音时长上限，默认 180 秒 |
 
 联网检索属于固定回答策略，不设置用户开关。模型名称只保存在配置和运行日志中，普通用户页面不会展示底层模型 ID。
 
@@ -178,6 +195,8 @@ admin_login_url = "/admin-login"
 ```
 
 脚本只为专用网络开放统一入口 `8501`。管理员页面和两套可视化实验均从主站内嵌访问，不再单独开放端口。其他设备访问 `http://Windows主机IP:8501`。
+
+> Edge/Chrome 只允许安全来源调用麦克风。`http://localhost:8501` 可录音，但其他电脑通过普通 HTTP IP 地址访问时，语音按钮会提示需要 HTTPS；正式局域网语音输入应在统一入口配置客户端信任的 HTTPS 证书，WebSocket 会自动使用 WSS。
 
 ## Rocky Linux 10 独立版
 
@@ -211,7 +230,7 @@ bash install.sh
 PHYSICS_PUBLIC_BASE_URL=http://192.168.222.147:1234/agent
 ```
 
-该值用于让两套内嵌实验正确生成带 `/agent/` 前缀的资源与 WebSocket 地址。详细要求和故障处理见 [Rocky 部署说明](agent_of_college_physics/README.md)。
+该值用于让两套内嵌实验和 Paraformer 语音服务正确生成带 `/agent/` 前缀的资源与 WebSocket 地址，并校验浏览器看到的公开端口。普通 HTTP 可问答但不能直接取得远程麦克风权限；项目另带用户目录级 `setup_https.sh`，可在网络放行 8443 后启用 HTTPS/WSS。详细要求、客户端证书信任和当前 Edge 临时兼容方法见 [Rocky 部署说明](agent_of_college_physics/README.md)。
 
 ### 服务管理
 
@@ -227,16 +246,18 @@ bash manage.sh logs
 
 Rocky 版不会注册系统级开机服务，服务器重启后需再次执行 `bash manage.sh start`。
 
-Rocky 版使用目录内的 Python 网关统一公开 `8501`：
+Rocky 版使用目录内的 Python 网关公开 HTTP 入口，并可选启用独立 HTTPS/WSS 入口：
 
 | 服务 | 监听地址 |
 | --- | --- |
-| 对外统一入口 | `0.0.0.0:8501` |
+| HTTP 兼容入口 | `0.0.0.0:8501` |
+| HTTPS/WSS 入口 | `0.0.0.0:8443`，执行 `setup_https.sh` 后启用 |
 | Streamlit 内部服务 | `127.0.0.1:8502` |
 | 管理员内部服务 | `127.0.0.1:8603` |
+| Paraformer 语音服务 | `127.0.0.1:8604`，仅由统一入口代理 |
 | 李萨如与声速实验 | 仅监听 `127.0.0.1`，由统一入口代理 |
 
-安装脚本不会修改防火墙。若局域网客户端无法访问，应由服务器管理员按实际网段仅放行 TCP `8501`；Streamlit、管理员和实验内部服务均不应对外开放。
+安装脚本不会修改防火墙。若局域网客户端无法访问，应由服务器管理员按实际网段放行 TCP `8501`；需要受信任的远程麦克风时还应放行 `8443`。Streamlit、管理员、ASR 和实验内部服务均不应对外开放。
 
 Rocky 模型配置位于：
 
@@ -247,6 +268,16 @@ Rocky 模型配置位于：
 修改后执行 `bash manage.sh restart`。
 
 Rocky 安装脚本会在用户目录中准备 Python 3.13、项目虚拟环境、Julia 1.10.10 和 Julia depot。安装阶段需要访问 Python 包源与 Julia 官方下载站；回答阶段由模型服务检索网络内容，应用自身不启动独立网页爬虫。
+
+安装器还会从固定版本的 Sherpa-ONNX 模型仓库下载三个经过 SHA-256 校验的 Paraformer INT8 文件，总计约 226.5 MiB；不会保留 1 GiB 的完整模型归档或 FP32 文件。
+
+## 实时语音输入
+
+“智能助教”模式把麦克风按钮放在提问框内部、发送按钮左侧。点按开始录音，再次点按停止；浏览器把单声道音频重采样为 16 kHz Float32 PCM，并通过同源 WebSocket 持续发送。中间识别结果显示在输入框上方的小浮层中，停止后才把最终文字填入聊天框，不会自动发送，用户仍可检查或修改文字。
+
+语音后端采用 `sherpa-onnx 1.13.4` 和中英双语 `Paraformer-zh-streaming` INT8 模型，纯 CPU 运行，不依赖 PyTorch、GPU、FFmpeg 或系统麦克风设备。模型固定到公开仓库的具体 revision 并校验每个文件的大小与 SHA-256，许可证为 Apache-2.0。该模型不提供词级时间戳；Sherpa 的在线 Paraformer 接口也没有真正的热词偏置，本项目仅对少量常见物理术语做确定性纠错。
+
+浏览器麦克风权限有一项必须满足的前提：非 `localhost` 页面通常需要客户端信任的 HTTPS。Rocky 版可执行 `PHYSICS_HTTPS_HOST=<服务器IP> bash setup_https.sh` 生成项目专用入口；客户端只导入 CA 公钥证书，绝不能复制 CA 私钥或服务器私钥。若网络暂时只放行现有 HTTP 反代，可在受控内网的 Edge 上为该单一来源配置官方安全来源例外，代价是语音仍以未加密 HTTP/WS 传输。ASR 服务自身始终只监听回环地址，不需要对外开放 `8604`。
 
 ## 登录、历史与管理员后台
 
@@ -269,6 +300,7 @@ agnet/data/assistant.db
 - 回答评价及用户意见；
 - 模型、网络、图片识别和可视化运行错误；
 - Excel 身份名册导入及账号关联。
+- 身份名册可在管理页面逐条新增、修改和删除；已绑定账号的记录会受到保护。
 
 Windows 版管理员 API 默认仅监听 `127.0.0.1:8603`。Rocky 版由 `8501` 用户级网关转发管理员路由，因此学生页面和管理员页面共用一个对外端口，`8603` 不对局域网开放。
 
@@ -393,6 +425,10 @@ Stop-Process -Id <OwningProcess>
 
 确认 Julia 依赖已完成初始化、主站 `8501` 可以访问且客户端浏览器支持 WebGL2。实验通过主站同源内嵌，不需要另开端口。Rocky 可运行 `bash manage.sh logs` 查看主服务日志；Julia 实验日志位于应用运行目录的 `runtime/experiments/`。
 
+### 语音按钮提示需要 HTTPS
+
+这是浏览器的麦克风安全策略，不是 Paraformer 故障。`localhost` 可使用普通 HTTP；局域网正式部署应使用受信任的 HTTPS/WSS。Rocky 先运行 `bash setup_https.sh`，再确认 8443 已由网络策略放行并按部署说明导入 CA 公钥。若当前网络只能访问 HTTP，可使用部署说明中的 Edge 单来源兼容策略，关闭并重新打开 Edge 后生效。后端可依次检查 `http://127.0.0.1:8604/health`、`http://127.0.0.1:8501/asr/health` 和公开入口的 `/agent/asr/health`；Rocky 日志位于 `.runtime/logs/asr.log`。
+
 ### Rocky 重启后网页无法访问
 
 ```bash
@@ -411,6 +447,7 @@ bash manage.sh start
 - 本地 BM25
 - Plotly
 - Julia / Bonito / WGLMakie
+- Sherpa-ONNX / Paraformer-zh-streaming
 - Poppler / WPS COM / LibreOffice headless
 
 ## 版权说明

@@ -269,6 +269,60 @@ def upsert_identity_roster(entries):
     return result
 
 
+def update_identity_roster_entry(roster_id, identity_type, institutional_id, real_name):
+    """Edit one unbound roster entry and return a small result object."""
+    identity_type = str(identity_type or "").strip().lower()
+    institutional_id = str(institutional_id or "").strip()
+    real_name = str(real_name or "").strip()
+    if identity_type not in {"student", "teacher"} or not institutional_id or not real_name:
+        raise ValueError("身份类型、编号和姓名不能为空")
+    if len(institutional_id) > 64 or len(real_name) > 64:
+        raise ValueError("编号或姓名过长")
+    conn = _get_conn()
+    try:
+        row = conn.execute(
+            "SELECT bound_user_id FROM identity_roster WHERE id=? AND is_active=1",
+            (int(roster_id),),
+        ).fetchone()
+        if not row:
+            raise LookupError("名册记录不存在")
+        if row["bound_user_id"]:
+            raise PermissionError("已绑定账号的名册记录不能修改")
+        duplicate = conn.execute(
+            "SELECT id FROM identity_roster WHERE identity_type=? AND institutional_id=? AND id<>? AND is_active=1",
+            (identity_type, institutional_id, int(roster_id)),
+        ).fetchone()
+        if duplicate:
+            raise ValueError("该身份类型和编号已经存在")
+        conn.execute(
+            "UPDATE identity_roster SET identity_type=?, institutional_id=?, real_name=?, is_active=1, updated_at=? WHERE id=?",
+            (identity_type, institutional_id, real_name, datetime.now().isoformat(), int(roster_id)),
+        )
+        conn.commit()
+        return {"updated": True}
+    finally:
+        conn.close()
+
+
+def delete_identity_roster_entry(roster_id):
+    """Delete one unbound roster entry; bound identities are protected."""
+    conn = _get_conn()
+    try:
+        row = conn.execute(
+            "SELECT bound_user_id FROM identity_roster WHERE id=? AND is_active=1",
+            (int(roster_id),),
+        ).fetchone()
+        if not row:
+            raise LookupError("名册记录不存在")
+        if row["bound_user_id"]:
+            raise PermissionError("已绑定账号的名册记录不能删除")
+        conn.execute("DELETE FROM identity_roster WHERE id=?", (int(roster_id),))
+        conn.commit()
+        return {"deleted": True}
+    finally:
+        conn.close()
+
+
 def get_identity_roster_stats(limit=1000):
     conn = _get_conn()
     counts = conn.execute(
@@ -277,7 +331,7 @@ def get_identity_roster_stats(limit=1000):
            FROM identity_roster WHERE is_active=1 GROUP BY identity_type"""
     ).fetchall()
     rows = conn.execute(
-        """SELECT r.identity_type, r.institutional_id, r.real_name, r.is_active,
+        """SELECT r.id, r.identity_type, r.institutional_id, r.real_name, r.is_active,
                   r.bound_at, u.username
            FROM identity_roster r
            LEFT JOIN users u ON u.id = r.bound_user_id

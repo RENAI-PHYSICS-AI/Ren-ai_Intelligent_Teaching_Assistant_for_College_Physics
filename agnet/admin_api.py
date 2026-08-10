@@ -16,6 +16,7 @@ from openpyxl import load_workbook
 
 import analytics_db as db
 import admin_auth
+from proxy_paths import with_public_prefix
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -39,6 +40,10 @@ class IdentityRosterEntry(BaseModel):
 
 class IdentityRosterBatch(BaseModel):
     entries: list[IdentityRosterEntry] = Field(min_length=1, max_length=2000)
+
+
+class IdentityRosterEdit(IdentityRosterEntry):
+    pass
 
 
 def _normalize_excel_header(value) -> str:
@@ -250,7 +255,7 @@ def _analytics_payload(recent_error_limit: int = 15) -> dict:
     }
 
 
-def _analytics_login_page(auto_load: bool = False) -> str:
+def _analytics_login_page(auto_load: bool = False, public_prefix: str = "") -> str:
     page = """
 <!doctype html>
 <html lang="zh-CN">
@@ -286,6 +291,10 @@ def _analytics_login_page(auto_load: bool = False) -> str:
     .bar > span { display: block; height: 100%; background: #4a90f0; }
     .rules { margin: 10px 0 0; padding-left: 20px; color: #9fb0c4; font-size: 13px; }
     .roster-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; }
+    .roster-actions { display: inline-flex; gap: 6px; margin-left: 10px; vertical-align: middle; }
+    .roster-actions button { padding: 4px 9px; font-size: 12px; }
+    .roster-actions button.danger { background: #a43d4a; }
+    .roster-actions button.danger:hover { background: #c4515d; }
     .excel-upload { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; margin-top: 14px; padding-top: 14px; border-top: 1px solid #26384f; }
     .excel-upload input[type="file"] { min-width: 0; width: 100%; box-sizing: border-box; }
     textarea { width: 100%; min-height: 130px; box-sizing: border-box; resize: vertical; padding: 11px 12px; border-radius: 6px; border: 1px solid #40546d; background: #0b1118; color: #fff; font: 14px/1.6 Consolas, monospace; }
@@ -366,6 +375,37 @@ def _analytics_login_page(auto_load: bool = False) -> str:
       resultEl.textContent = `新增 ${result.added} 条，更新 ${result.updated} 条，未变化 ${result.unchanged} 条。${(result.errors || []).join("；")}`;
       source.value = "";
       setTimeout(loadAnalytics, 700);
+    }
+
+    async function editRoster(id, identityType, institutionalId, realName) {
+      const nextId = prompt("编号（学号/工号）", institutionalId);
+      if (nextId === null) return;
+      const nextName = prompt("姓名", realName);
+      if (nextName === null) return;
+      const nextTypeText = prompt("身份类型：student 或 teacher", identityType);
+      if (nextTypeText === null) return;
+      const nextType = nextTypeText.trim().toLowerCase();
+      if (!nextId.trim() || !nextName.trim() || !["student", "teacher"].includes(nextType)) {
+        alert("身份类型、编号和姓名不能为空，类型只能是 student 或 teacher。");
+        return;
+      }
+      const resp = await fetch(apiUrl(`/identity-roster/${id}`), {
+        method: "PUT",
+        headers: {"X-Admin-Token": tokenInput.value.trim(), "Content-Type": "application/json"},
+        body: JSON.stringify({identity_type: nextType, institutional_id: nextId.trim(), real_name: nextName.trim()})
+      });
+      if (!resp.ok) { const result = await resp.json(); alert(result.detail || "修改失败"); return; }
+      loadAnalytics();
+    }
+
+    async function deleteRoster(id, label) {
+      if (!confirm(`确定删除名册记录“${label}”吗？`)) return;
+      const resp = await fetch(apiUrl(`/identity-roster/${id}`), {
+        method: "DELETE",
+        headers: {"X-Admin-Token": tokenInput.value.trim()}
+      });
+      if (!resp.ok) { const result = await resp.json(); alert(result.detail || "删除失败"); return; }
+      loadAnalytics();
     }
 
     async function importRosterExcel() {
@@ -463,7 +503,9 @@ def _analytics_login_page(auto_load: bool = False) -> str:
         const typeName = row.identity_type === "student" ? "学生" : "教师";
         const idName = row.identity_type === "student" ? "学号" : "工号";
         const state = row.username ? `已绑定 @${escapeHtml(row.username)}` : "未绑定";
-        return `<li><b>${escapeHtml(row.real_name)}</b> · ${typeName} · ${idName} ${escapeHtml(row.institutional_id)}<br><span class="muted">${state}</span></li>`;
+        const label = `${row.real_name} · ${typeName} · ${row.institutional_id}`;
+        const actions = row.username ? "" : `<span class="roster-actions"><button type="button" onclick='editRoster(${Number(row.id)}, ${JSON.stringify(row.identity_type)}, ${JSON.stringify(row.institutional_id)}, ${JSON.stringify(row.real_name)})'>修改</button><button type="button" class="danger" onclick='deleteRoster(${Number(row.id)}, ${JSON.stringify(label)})'>删除</button></span>`;
+        return `<li><b>${escapeHtml(row.real_name)}</b> · ${typeName} · ${idName} ${escapeHtml(row.institutional_id)}<br><span class="muted">${state}</span>${actions}</li>`;
       });
       dashboard.innerHTML = `
         <div class="grid">
@@ -582,10 +624,6 @@ def _analytics_login_page(auto_load: bool = False) -> str:
             ${itemList(data.unanswered, r => `<li><b>${escapeHtml(r.chapter || "")}</b> ${escapeHtml(String(r.question || "").slice(0,120))}<br><span class="muted">${escapeHtml(String(r.error || "").slice(0,160))}</span></li>`)}
           </div>
         </div>
-        <div class="card" style="margin-top:14px;">
-          <h2>原始 JSON</h2>
-          <pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>
-        </div>
       `;
     }
     __AUTO_LOAD__
@@ -600,6 +638,11 @@ def _analytics_login_page(auto_load: bool = False) -> str:
         "请先从学生端登录管理员账号；也可以输入管理员访问令牌。"
     )
     auth_style = 'style="display:none"' if auto_load else ""
+    prefix_json = json.dumps(public_prefix.rstrip("/"))
+    page = page.replace("const tokenInput = document.getElementById(\"token\");", f"const API_PREFIX = {prefix_json};\n    const apiUrl = path => API_PREFIX + path;\n\n    const tokenInput = document.getElementById(\"token\");")
+    page = page.replace('fetch("/identity-roster",', 'fetch(apiUrl("/identity-roster"),')
+    page = page.replace('fetch("/identity-roster/excel",', 'fetch(apiUrl("/identity-roster/excel"),')
+    page = page.replace('fetch("/analytics?format=json",', 'fetch(apiUrl("/analytics?format=json"),')
     return (page.replace("__AUTO_LOAD__", auto_script)
                 .replace("__AUTH_NOTE__", auth_note)
                 .replace("__AUTH_STYLE__", auth_style))
@@ -651,7 +694,14 @@ def admin_login(request: Request, ticket: str = Query(min_length=20, max_length=
     session_token = admin_auth.issue_token(
         secret, str(payload["sub"]), "admin-session", _ADMIN_SESSION_SECONDS
     )
-    response = RedirectResponse(url="/analytics", status_code=303)
+    # The gateway may mount this API below /agent (or another prefix).  Keep
+    # the browser on that public path after ticket authentication.
+    public_prefix = request.headers.get("x-forwarded-prefix", "").strip()
+    if not public_prefix:
+        public_prefix = os.getenv("PHYSICS_GATEWAY_PUBLIC_PREFIX", "")
+    response = RedirectResponse(
+        url=with_public_prefix("/analytics", "", public_prefix), status_code=303
+    )
     forwarded_proto = request.headers.get("x-forwarded-proto", request.url.scheme).split(",", 1)[0].strip()
     response.set_cookie(
         _ADMIN_SESSION_COOKIE,
@@ -677,6 +727,39 @@ def update_identity_roster(
     _require_admin_token(x_admin_token, authorization, client_ip, admin_session)
     entries = [entry.model_dump() for entry in payload.entries]
     return db.upsert_identity_roster(entries)
+
+
+@app.put("/identity-roster/{roster_id}")
+def edit_identity_roster(
+    roster_id: int,
+    payload: IdentityRosterEdit,
+    request: Request,
+    x_admin_token: str | None = Header(default=None),
+    authorization: str | None = Header(default=None),
+    admin_session: str | None = Cookie(default=None, alias=_ADMIN_SESSION_COOKIE),
+):
+    client_ip = request.client.host if request.client else "unknown"
+    _require_admin_token(x_admin_token, authorization, client_ip, admin_session)
+    try:
+        return db.update_identity_roster_entry(roster_id, payload.identity_type, payload.institutional_id, payload.real_name)
+    except (ValueError, LookupError, PermissionError) as exc:
+        raise HTTPException(status_code=409 if isinstance(exc, PermissionError) else 400, detail=str(exc)) from exc
+
+
+@app.delete("/identity-roster/{roster_id}")
+def remove_identity_roster(
+    roster_id: int,
+    request: Request,
+    x_admin_token: str | None = Header(default=None),
+    authorization: str | None = Header(default=None),
+    admin_session: str | None = Cookie(default=None, alias=_ADMIN_SESSION_COOKIE),
+):
+    client_ip = request.client.host if request.client else "unknown"
+    _require_admin_token(x_admin_token, authorization, client_ip, admin_session)
+    try:
+        return db.delete_identity_roster_entry(roster_id)
+    except (LookupError, PermissionError) as exc:
+        raise HTTPException(status_code=409 if isinstance(exc, PermissionError) else 404, detail=str(exc)) from exc
 
 
 @app.post("/identity-roster/excel")
@@ -714,13 +797,17 @@ def analytics(
     recent_error_limit: int = Query(default=15, ge=1, le=100),
     format: str = Query(default="html"),
 ):
+    public_prefix = request.headers.get("x-forwarded-prefix", "").strip()
+    if not public_prefix:
+        public_prefix = os.getenv("PHYSICS_GATEWAY_PUBLIC_PREFIX", "").strip()
+    public_prefix = "/" + public_prefix.strip("/") if public_prefix.strip("/") else ""
     has_session = _valid_admin_session(admin_session)
     has_token = bool(x_admin_token or authorization)
     if not has_session and not has_token and format != "json":
-        return HTMLResponse(_analytics_login_page())
+        return HTMLResponse(_analytics_login_page(public_prefix=public_prefix))
 
     client_ip = request.client.host if request.client else "unknown"
     _require_admin_token(x_admin_token, authorization, client_ip, admin_session)
     if format != "json":
-        return HTMLResponse(_analytics_login_page(auto_load=True))
+        return HTMLResponse(_analytics_login_page(auto_load=True, public_prefix=public_prefix))
     return _analytics_payload(recent_error_limit)

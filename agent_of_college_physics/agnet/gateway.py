@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import ssl
 from collections.abc import AsyncIterator
 
 from aiohttp import ClientSession, ClientTimeout, WSMsgType, web
@@ -11,6 +12,10 @@ from aiohttp import ClientSession, ClientTimeout, WSMsgType, web
 LOGGER = logging.getLogger("physics_gateway")
 STREAMLIT_UPSTREAM = os.getenv("PHYSICS_STREAMLIT_UPSTREAM", "http://127.0.0.1:8502")
 ADMIN_UPSTREAM = os.getenv("PHYSICS_ADMIN_UPSTREAM", "http://127.0.0.1:8603")
+ASR_UPSTREAM = os.getenv("PHYSICS_ASR_UPSTREAM", "http://127.0.0.1:8604")
+PUBLIC_PATH_PREFIX = "/" + os.getenv("PHYSICS_GATEWAY_PUBLIC_PREFIX", "").strip("/")
+if PUBLIC_PATH_PREFIX == "/":
+    PUBLIC_PATH_PREFIX = ""
 EXPERIMENT_UPSTREAMS = {
     "/experiments/lissajous": os.getenv(
         "PHYSICS_LISSAJOUS_UPSTREAM", "http://127.0.0.1:9384"
@@ -25,6 +30,10 @@ ADMIN_PATHS = {
     "/identity-roster",
     "/identity-roster/excel",
 }
+
+
+def is_admin_path(path: str) -> bool:
+    return path in ADMIN_PATHS or path.startswith("/identity-roster/")
 HOP_BY_HOP = {
     "connection",
     "content-length",
@@ -38,16 +47,27 @@ HOP_BY_HOP = {
 }
 
 
+def upstream_path(request: web.Request) -> str:
+    path = request.path
+    if PUBLIC_PATH_PREFIX and (path == PUBLIC_PATH_PREFIX or path.startswith(f"{PUBLIC_PATH_PREFIX}/")):
+        return path[len(PUBLIC_PATH_PREFIX):] or "/"
+    return path
+
+
 def upstream_url(request: web.Request) -> str:
+    path = upstream_path(request)
+    query = f"?{request.query_string}" if request.query_string else ""
+    if path == "/asr" or path.startswith("/asr/"):
+        suffix = path[len("/asr"):] or "/"
+        return f"{ASR_UPSTREAM}{suffix}{query}"
     for prefix, base in EXPERIMENT_UPSTREAMS.items():
-        if request.path == prefix or request.path.startswith(f"{prefix}/"):
-            suffix = request.path[len(prefix):] or "/"
-            query = f"?{request.query_string}" if request.query_string else ""
+        if path == prefix or path.startswith(f"{prefix}/"):
+            suffix = path[len(prefix):] or "/"
             return f"{base}{suffix}{query}"
-    if request.path == "/agent-health/admin":
+    if path == "/agent-health/admin":
         return f"{ADMIN_UPSTREAM}/health"
-    base = ADMIN_UPSTREAM if request.path in ADMIN_PATHS else STREAMLIT_UPSTREAM
-    return f"{base}{request.rel_url}"
+    base = ADMIN_UPSTREAM if is_admin_path(path) else STREAMLIT_UPSTREAM
+    return f"{base}{path}{query}"
 
 
 def forward_headers(request: web.Request) -> dict[str, str]:
@@ -59,8 +79,21 @@ def forward_headers(request: web.Request) -> dict[str, str]:
     peer = request.remote or ""
     previous = request.headers.get("X-Forwarded-For", "")
     headers["X-Forwarded-For"] = ", ".join(value for value in (previous, peer) if value)
-    headers["X-Forwarded-Proto"] = request.scheme
-    headers["X-Forwarded-Host"] = request.host
+    headers["X-Forwarded-Proto"] = (
+        request.headers.get("X-Forwarded-Proto", "").split(",", 1)[0].strip()
+        or request.scheme
+    )
+    headers["X-Forwarded-Host"] = (
+        request.headers.get("X-Forwarded-Host", "").split(",", 1)[0].strip()
+        or request.host
+    )
+    # Preserve the public mount point for upstream redirects.  The outer
+    # reverse proxy may already have stripped /agent before this gateway sees
+    # the request, so the configured prefix is the authoritative fallback.
+    headers["X-Forwarded-Prefix"] = (
+        request.headers.get("X-Forwarded-Prefix", "").split(",", 1)[0].strip()
+        or PUBLIC_PATH_PREFIX
+    )
     return headers
 
 
@@ -74,7 +107,14 @@ async def copy_websocket(source, destination) -> None:
             await destination.ping(message.data)
         elif message.type == WSMsgType.PONG:
             await destination.pong(message.data)
-        elif message.type in {WSMsgType.CLOSE, WSMsgType.CLOSED, WSMsgType.ERROR}:
+        elif message.type == WSMsgType.CLOSE:
+            reason = message.extra.encode("utf-8", errors="replace") if message.extra else b""
+            await destination.close(code=message.data or 1000, message=reason)
+            break
+        elif message.type == WSMsgType.ERROR:
+            await destination.close(code=1011, message=b"websocket proxy error")
+            break
+        elif message.type == WSMsgType.CLOSED:
             break
 
 
@@ -156,10 +196,24 @@ def create_app() -> web.Application:
     return app
 
 
+def tls_context() -> ssl.SSLContext | None:
+    certificate = os.getenv("PHYSICS_GATEWAY_TLS_CERT", "").strip()
+    private_key = os.getenv("PHYSICS_GATEWAY_TLS_KEY", "").strip()
+    if not certificate and not private_key:
+        return None
+    if not certificate or not private_key:
+        raise RuntimeError("HTTPS 网关必须同时配置证书和私钥")
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    context.load_cert_chain(certificate, private_key)
+    return context
+
+
 if __name__ == "__main__":
     web.run_app(
         create_app(),
         host=os.getenv("PHYSICS_GATEWAY_HOST", "0.0.0.0"),
         port=int(os.getenv("PHYSICS_GATEWAY_PORT", "8501")),
+        ssl_context=tls_context(),
         print=lambda *_: None,
     )

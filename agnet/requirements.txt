@@ -1,4 +1,4 @@
-streamlit>=1.40
+streamlit==1.60.0
 requests>=2.32
 pypdf>=5.0
 numpy>=2.0
@@ -10,4 +10,6 @@ fastapi>=0.110
 uvicorn>=0.27
 aiohttp>=3.13
 openpyxl>=3.1
+sherpa-onnx==1.13.4
+sherpa-onnx-core==1.13.4
 pywin32>=311; sys_platform == "win32"

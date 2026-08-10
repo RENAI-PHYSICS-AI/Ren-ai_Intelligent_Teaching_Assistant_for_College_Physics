@@ -10,6 +10,8 @@ bash install.sh
 
 请使用普通用户，不要使用 sudo。安装器只在当前 `agent_of_college_physics` 目录中创建 Python、Julia、配置和运行文件，并通过用户级 Python 网关统一提供 `8501`；不会修改任何系统目录。两套可视化实验只作为本机内部服务运行，由主站 `/experiments/...` 路径内嵌，不单独对外提供端口。
 
+安装器还会准备 Paraformer-zh-streaming INT8 模型。语音服务仅监听 `127.0.0.1:8604`，由主站 `/asr/...` 同源代理，不新增外部端口。局域网浏览器调用麦克风必须使用可信 HTTPS/WSS；普通 HTTP IP 地址只能使用文字、图片和实验功能。
+
 本目录中的关键数据：
 
 - `data/assistant.db`：迁移的用户、管理员、会话、消息、反馈和学情数据；
