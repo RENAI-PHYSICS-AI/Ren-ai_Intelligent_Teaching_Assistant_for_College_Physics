@@ -2,3 +2,18 @@
 /agent_of_college_physics/.runtime/
 __pycache__/
 *.py[cod]
+# 临时PDF处理
+tmp/
+
+# Python缓存
+__pycache__/
+*.pyc
+
+# Streamlit
+.streamlit/secrets.toml
+
+# 日志
+*.log
+
+# 数据库
+*.db
