@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import json
+import html
 import random
 import re
 import time
@@ -13,6 +13,7 @@ import streamlit.components.v1 as components
 from build_kb import build
 import admin_auth
 import analytics_db
+import user_session
 from config import APP_DIR, KB_FILE, setting
 from experiment_hub import render_experiment_hub
 from llm import plan_visualization, stream_answer, visualization_requested
@@ -255,14 +256,75 @@ def refresh_account_state() -> None:
     st.session_state.user_role = (account or {}).get("role", "student")
 
 
-def admin_login_target() -> str:
-    admin_token = (
+def session_signing_secret() -> str:
+    return (
         setting("ADMIN_TOKEN")
         or setting("ADMIN_ANALYTICS_TOKEN")
         or admin_auth.load_or_create_local_secret(
             APP_DIR / "data" / "admin_signing_secret"
         )
     )
+
+
+def restore_persistent_login() -> bool:
+    """Restore a signed browser login after a full page refresh."""
+    if st.session_state.access_granted or st.session_state.user_id is not None:
+        return False
+    try:
+        token = str(st.context.cookies.get(user_session.USER_SESSION_COOKIE, ""))
+    except Exception:
+        token = ""
+    account = user_session.resolve_session(
+        session_signing_secret(), token, analytics_db.get_user_by_username
+    )
+    if not account:
+        return False
+    st.session_state.user_id = int(account["id"])
+    st.session_state.username = str(account["username"])
+    st.session_state.user_role = str(account.get("role") or "student")
+    st.session_state.access_granted = True
+    return True
+
+
+def user_session_target(action: str, username: str) -> str:
+    if action == "login":
+        internal_path = setting("USER_SESSION_LOGIN_URL", "/session-login")
+        ticket = user_session.issue_login_ticket(session_signing_secret(), username)
+    elif action == "logout":
+        internal_path = setting("USER_SESSION_LOGOUT_URL", "/session-logout")
+        ticket = user_session.issue_logout_ticket(session_signing_secret(), username)
+    else:
+        raise ValueError(f"Unsupported browser session action: {action}")
+    target = with_public_prefix(
+        internal_path,
+        setting("PHYSICS_PUBLIC_BASE_URL", ""),
+        setting("PHYSICS_GATEWAY_PUBLIC_PREFIX", ""),
+    )
+    separator = "&" if "?" in target else "?"
+    return f"{target}{separator}ticket={ticket}&mode={theme_mode}"
+
+
+def redirect_browser(target: str, message: str, button_label: str) -> None:
+    safe_target = html.escape(target, quote=True)
+    safe_message = html.escape(message)
+    safe_button_label = html.escape(button_label)
+    st.markdown(
+        f"""
+        <meta http-equiv="refresh" content="0; url={safe_target}">
+        <div role="status" aria-live="polite" style="padding:.7rem 0;color:inherit">
+          {safe_message}
+          <small style="display:block;margin-top:.45rem;opacity:.72">
+            若浏览器未自动跳转，<a href="{safe_target}" target="_self">{safe_button_label}</a>。
+          </small>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.stop()
+
+
+def admin_login_target() -> str:
+    admin_token = session_signing_secret()
     admin_login_url = with_public_prefix(
         setting("ADMIN_LOGIN_URL", "/admin-login"),
         setting("PHYSICS_PUBLIC_BASE_URL", ""),
@@ -279,19 +341,11 @@ def redirect_admin_after_login() -> None:
     if st.session_state.user_role != "admin":
         return
     target = admin_login_target()
-    st.info("管理员身份验证成功，正在进入管理后台……")
-    st.link_button("立即进入管理员后台", target, use_container_width=True)
-    components.html(
-        f"""
-        <script>
-        window.parent.setTimeout(() => {{
-          window.parent.location.replace({json.dumps(target)});
-        }}, 120);
-        </script>
-        """,
-        height=0,
+    redirect_browser(
+        target,
+        "管理员身份验证成功，正在进入管理后台……",
+        "立即进入管理员后台",
     )
-    st.stop()
 
 
 def message_ui_key(message: dict) -> str:
@@ -543,6 +597,8 @@ def render_history_delete(message: dict, message_index: int) -> None:
 def mark_answer_in_progress() -> None:
     st.session_state._answer_in_progress = True
 
+restore_persistent_login()
+
 if not st.session_state.access_granted:
     left_space, auth_column, right_space = st.columns([1, 1.35, 1])
     with auth_column:
@@ -576,7 +632,11 @@ if not st.session_state.access_granted:
                     st.session_state.username = canonical_username
                     load_initial_history(user_id)
                     st.session_state.access_granted = True
-                    st.rerun()
+                    redirect_browser(
+                        user_session_target("login", canonical_username),
+                        "登录成功，正在建立安全会话……",
+                        "继续进入智能助教",
+                    )
         with landing_register_tab:
             with st.form("landing_register_form"):
                 landing_register_username = st.text_input(
@@ -606,7 +666,13 @@ if not st.session_state.access_granted:
                         st.session_state.user_id = user_id
                         st.session_state.username = landing_register_username.strip()
                         st.session_state.access_granted = True
-                        st.rerun()
+                        redirect_browser(
+                            user_session_target(
+                                "login", landing_register_username.strip()
+                            ),
+                            "注册成功，正在建立安全会话……",
+                            "继续进入智能助教",
+                        )
         st.markdown("<div style='height:.35rem'></div>", unsafe_allow_html=True)
         if st.button("无需注册，匿名进入", key="anonymous_login", use_container_width=True):
             st.session_state.user_id = None
@@ -696,6 +762,12 @@ with st.sidebar:
         if st.button("∿ 声速测量", key="sidebar_sound_speed", use_container_width=True):
             st.session_state.visual_experiment_name = "声速测量"
             st.rerun()
+        if st.button("⊖ 电子荷质比", key="sidebar_electron_em", use_container_width=True):
+            st.session_state.visual_experiment_name = "电子荷质比"
+            st.rerun()
+        if st.button("☀ 光电效应", key="sidebar_photoelectric", use_container_width=True):
+            st.session_state.visual_experiment_name = "光电效应"
+            st.rerun()
 
     st.divider()
     with st.expander("👤 用户与历史", expanded=False):
@@ -715,7 +787,11 @@ with st.sidebar:
                         st.session_state.user_id = user_id
                         st.session_state.username = canonical_username
                         load_initial_history(user_id)
-                        st.rerun()
+                        redirect_browser(
+                            user_session_target("login", canonical_username),
+                            "登录成功，正在建立安全会话……",
+                            "继续进入智能助教",
+                        )
             with register_tab:
                 with st.form("register_form"):
                     register_username = st.text_input("用户名", key="register_username")
@@ -735,7 +811,13 @@ with st.sidebar:
                             load_initial_history(user_id)
                             st.session_state.user_id = user_id
                             st.session_state.username = register_username.strip()
-                            st.rerun()
+                            redirect_browser(
+                                user_session_target(
+                                    "login", register_username.strip()
+                                ),
+                                "注册成功，正在建立安全会话……",
+                                "继续进入智能助教",
+                            )
             if st.button("返回登录入口", key="leave_anonymous", use_container_width=True):
                 st.session_state.access_granted = False
                 st.rerun()
@@ -771,6 +853,9 @@ with st.sidebar:
                         except ValueError as exc:
                             st.error(str(exc))
             if st.button("退出登录", key="logout", use_container_width=True):
+                logout_target = user_session_target(
+                    "logout", str(st.session_state.username)
+                )
                 analytics_db.end_session(
                     st.session_state.get("analytics_session_id", ""),
                     st.session_state.get("analytics_total_questions", 0),
@@ -789,7 +874,11 @@ with st.sidebar:
                 st.session_state.pop("workspace_mode", None)
                 st.session_state.pop("_pending_delete_message", None)
                 st.session_state._answer_in_progress = False
-                st.rerun()
+                redirect_browser(
+                    logout_target,
+                    "正在安全退出并清除浏览器登录状态……",
+                    "返回登录页面",
+                )
 
         if st.session_state.messages or (
             st.session_state.user_id is not None and st.session_state._history_has_more

@@ -16,6 +16,10 @@ ASR_UPSTREAM = os.getenv("PHYSICS_ASR_UPSTREAM", "http://127.0.0.1:8604")
 PUBLIC_PATH_PREFIX = "/" + os.getenv("PHYSICS_GATEWAY_PUBLIC_PREFIX", "").strip("/")
 if PUBLIC_PATH_PREFIX == "/":
     PUBLIC_PATH_PREFIX = ""
+WEBSOCKET_MAX_MESSAGE_SIZE = max(
+    4,
+    int(os.getenv("PHYSICS_WEBSOCKET_MAX_MESSAGE_MB", "64")),
+) * 1024**2
 EXPERIMENT_UPSTREAMS = {
     "/experiments/lissajous": os.getenv(
         "PHYSICS_LISSAJOUS_UPSTREAM", "http://127.0.0.1:9384"
@@ -23,12 +27,20 @@ EXPERIMENT_UPSTREAMS = {
     "/experiments/sound-speed": os.getenv(
         "PHYSICS_SOUND_SPEED_UPSTREAM", "http://127.0.0.1:9385"
     ),
+    "/experiments/electron-em": os.getenv(
+        "PHYSICS_ELECTRON_EM_UPSTREAM", "http://127.0.0.1:9386"
+    ),
+    "/experiments/photoelectric": os.getenv(
+        "PHYSICS_PHOTOELECTRIC_UPSTREAM", "http://127.0.0.1:9387"
+    ),
 }
 ADMIN_PATHS = {
     "/admin-login",
     "/analytics",
     "/identity-roster",
     "/identity-roster/excel",
+    "/session-login",
+    "/session-logout",
 }
 
 
@@ -128,7 +140,10 @@ async def websocket_proxy(request: web.Request) -> web.WebSocketResponse:
     # the browser-facing socket. Preparing a protocol-less socket leaves the
     # frontend indefinitely on its skeleton screen when accessed over LAN.
     browser = web.WebSocketResponse(
-        protocols=protocols, autoping=True, heartbeat=30
+        protocols=protocols,
+        autoping=True,
+        heartbeat=30,
+        max_msg_size=WEBSOCKET_MAX_MESSAGE_SIZE,
     )
     await browser.prepare(request)
     session: ClientSession = request.app["client"]
@@ -137,6 +152,7 @@ async def websocket_proxy(request: web.Request) -> web.WebSocketResponse:
         async with session.ws_connect(
             upstream_url(request), headers=headers, protocols=protocols,
             autoping=True, heartbeat=30,
+            max_msg_size=WEBSOCKET_MAX_MESSAGE_SIZE,
         ) as upstream:
             browser_to_upstream = asyncio.create_task(copy_websocket(browser, upstream))
             upstream_to_browser = asyncio.create_task(copy_websocket(upstream, browser))

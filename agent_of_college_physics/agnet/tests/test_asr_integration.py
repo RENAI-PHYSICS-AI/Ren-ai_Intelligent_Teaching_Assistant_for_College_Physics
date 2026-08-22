@@ -31,6 +31,9 @@ class AsrTextTests(unittest.TestCase):
 
 
 class GatewayRoutingTests(unittest.TestCase):
+    def test_websocket_limit_supports_large_wglmakie_scenes(self) -> None:
+        self.assertGreaterEqual(gateway.WEBSOCKET_MAX_MESSAGE_SIZE, 64 * 1024**2)
+
     def test_asr_health_route_strips_public_prefix(self) -> None:
         request = SimpleNamespace(path="/asr/health", query_string="")
         self.assertEqual(gateway.upstream_url(request), f"{gateway.ASR_UPSTREAM}/health")

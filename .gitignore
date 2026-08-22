@@ -11,6 +11,21 @@ __pycache__/
 *.log
 # 数据库
 *.db
+*.db-shm
+*.db-wal
+# 应用运行数据（数据库、签名密钥、备份和服务日志）
+**/agnet/data/
+# 本地运行时目录与实验日志
+**/agnet/runtime/
+# Rocky 本机配置与 TLS 私钥
+agent_of_college_physics/config/physics-assistant.env
+agent_of_college_physics/config/tls/*.key
+agent_of_college_physics/.runtime/
+# 本地申报材料包含联系人与内部截图，不进入公开源码仓库
+申报材料/
+# 实验原始参考文献仅供本地抽取；仓库保留说明与脱敏后的知识库索引
+教学素材/物理实验/**/ref/*
+!教学素材/物理实验/**/ref/README.md
 # LaTeX 中间文件
 *.aux
 *.bbl

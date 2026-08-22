@@ -17,6 +17,7 @@ from openpyxl import load_workbook
 import analytics_db as db
 import admin_auth
 from proxy_paths import with_public_prefix
+import user_session
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -27,6 +28,7 @@ _AUTH_FAILURE_LIMIT = 10
 _ADMIN_SESSION_COOKIE = "physics_admin_session"
 _ADMIN_SESSION_SECONDS = 8 * 60 * 60
 _USED_LOGIN_NONCES: dict[str, int] = {}
+_USED_USER_LOGIN_NONCES: dict[str, int] = {}
 _MAX_EXCEL_BYTES = 8 * 1024 * 1024
 _MAX_EXCEL_UNCOMPRESSED_BYTES = 64 * 1024 * 1024
 _MAX_ROSTER_ROWS = 2000
@@ -150,7 +152,7 @@ def _parse_identity_roster_excel(content: bytes) -> tuple[list[dict], list[str]]
 
 
 def _load_admin_token() -> str:
-    env_token = (os.environ.get("ADMIN_ANALYTICS_TOKEN", "") or os.environ.get("ADMIN_TOKEN", "")).strip()
+    env_token = (os.environ.get("ADMIN_TOKEN", "") or os.environ.get("ADMIN_ANALYTICS_TOKEN", "")).strip()
     if env_token:
         return env_token
     if SECRETS_PATH.exists():
@@ -700,6 +702,107 @@ app.add_middleware(
 @app.get("/health")
 def health():
     return {"ok": True}
+
+
+def _request_public_prefix(request: Request) -> str:
+    public_prefix = request.headers.get("x-forwarded-prefix", "").strip()
+    if not public_prefix:
+        public_prefix = os.getenv("PHYSICS_GATEWAY_PUBLIC_PREFIX", "")
+    normalized = "/" + public_prefix.strip("/")
+    return "" if normalized == "/" else normalized
+
+
+def _public_app_url(request: Request, mode: str) -> str:
+    safe_mode = mode if mode in {"light", "system", "dark"} else "system"
+    return with_public_prefix(f"/?mode={safe_mode}", "", _request_public_prefix(request))
+
+
+def _user_session_cookie_path(request: Request) -> str:
+    return _request_public_prefix(request) or "/"
+
+
+def _request_is_https(request: Request) -> bool:
+    forwarded_proto = request.headers.get(
+        "x-forwarded-proto", request.url.scheme
+    ).split(",", 1)[0].strip()
+    return forwarded_proto == "https"
+
+
+@app.get("/session-login")
+def user_login_session(
+    request: Request,
+    ticket: str = Query(min_length=20, max_length=4096),
+    mode: str = Query(default="system", max_length=16),
+):
+    """Exchange a one-minute login ticket for an HttpOnly browser session."""
+    secret = _load_admin_token()
+    payload = user_session.verify_login_ticket(secret, ticket)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired user login ticket.")
+
+    now = int(time.time())
+    for nonce, expiry in list(_USED_USER_LOGIN_NONCES.items()):
+        if expiry < now:
+            _USED_USER_LOGIN_NONCES.pop(nonce, None)
+    nonce = str(payload["nonce"])
+
+    username = str(payload["sub"])
+    account = db.get_user_by_username(username)
+    if not account or not account.get("is_active"):
+        raise HTTPException(status_code=403, detail="User account is not active.")
+    if nonce in _USED_USER_LOGIN_NONCES:
+        existing_account = user_session.resolve_session(
+            secret,
+            request.cookies.get(user_session.USER_SESSION_COOKIE, ""),
+            db.get_user_by_username,
+        )
+        if (
+            not existing_account
+            or str(existing_account.get("username", "")).casefold()
+            != username.casefold()
+        ):
+            raise HTTPException(
+                status_code=401,
+                detail="User login ticket has already been used.",
+            )
+        return RedirectResponse(url=_public_app_url(request, mode), status_code=303)
+
+    _USED_USER_LOGIN_NONCES[nonce] = int(payload["exp"])
+
+    session_seconds = user_session.configured_session_seconds(
+        os.getenv("PHYSICS_USER_SESSION_SECONDS")
+    )
+    response = RedirectResponse(url=_public_app_url(request, mode), status_code=303)
+    response.set_cookie(
+        user_session.USER_SESSION_COOKIE,
+        user_session.issue_session(secret, username, session_seconds),
+        max_age=session_seconds,
+        httponly=True,
+        secure=_request_is_https(request),
+        samesite="strict",
+        path=_user_session_cookie_path(request),
+    )
+    return response
+
+
+@app.get("/session-logout")
+def user_logout_session(
+    request: Request,
+    ticket: str = Query(min_length=20, max_length=4096),
+    mode: str = Query(default="system", max_length=16),
+):
+    """Clear the persistent login cookie after validating a signed logout request."""
+    if not user_session.verify_logout_ticket(_load_admin_token(), ticket):
+        raise HTTPException(status_code=401, detail="Invalid or expired user logout ticket.")
+    response = RedirectResponse(url=_public_app_url(request, mode), status_code=303)
+    response.delete_cookie(
+        user_session.USER_SESSION_COOKIE,
+        path=_user_session_cookie_path(request),
+        secure=_request_is_https(request),
+        httponly=True,
+        samesite="strict",
+    )
+    return response
 
 
 @app.get("/admin-login")
