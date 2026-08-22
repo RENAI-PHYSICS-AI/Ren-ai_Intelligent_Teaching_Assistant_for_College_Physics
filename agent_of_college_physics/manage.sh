@@ -21,6 +21,10 @@ export PYTHONPATH="$APP_ROOT/agnet"
 export PHYSICS_JULIA_EXE="${PHYSICS_JULIA_EXE:-$RUNTIME_ROOT/bin/julia}"
 export JULIA_DEPOT_PATH="${JULIA_DEPOT_PATH:-$RUNTIME_ROOT/julia-depot}"
 export PHYSICS_SOUND_SPEED_OUTPUT_DIR="${PHYSICS_SOUND_SPEED_OUTPUT_DIR:-$RUNTIME_ROOT/experiment-output/sound-speed}"
+export PHYSICS_ELECTRON_EM_PORT="${PHYSICS_ELECTRON_EM_PORT:-9386}"
+export PHYSICS_ELECTRON_EM_UPSTREAM="${PHYSICS_ELECTRON_EM_UPSTREAM:-http://127.0.0.1:$PHYSICS_ELECTRON_EM_PORT}"
+export PHYSICS_PHOTOELECTRIC_PORT="${PHYSICS_PHOTOELECTRIC_PORT:-9387}"
+export PHYSICS_PHOTOELECTRIC_UPSTREAM="${PHYSICS_PHOTOELECTRIC_UPSTREAM:-http://127.0.0.1:$PHYSICS_PHOTOELECTRIC_PORT}"
 export PHYSICS_CJK_FONT="${PHYSICS_CJK_FONT:-$RUNTIME_ROOT/fonts/NotoSansCJKsc-Regular.otf}"
 export PHYSICS_ASR_MODEL_DIR="${PHYSICS_ASR_MODEL_DIR:-$RUNTIME_ROOT/models/paraformer-zh-streaming}"
 if [[ "$PHYSICS_ASR_MODEL_DIR" != /* ]]; then
@@ -240,7 +244,7 @@ experiment_pids() {
     pid="${proc_dir##*/}"
     command="$(tr '\0' ' ' <"$proc_dir/cmdline" 2>/dev/null || true)"
     case "$command" in
-      *"$APP_ROOT/agnet/experiments/lissajous/web.jl"*|*"$APP_ROOT/agnet/experiments/sound_speed/web.jl"*)
+      *"$APP_ROOT/agnet/experiments/lissajous/web.jl"*|*"$APP_ROOT/agnet/experiments/sound_speed/web.jl"*|*"$APP_ROOT/agnet/experiments/electron_em/web.jl"*|*"$APP_ROOT/agnet/experiments/photoelectric/web.jl"*)
         printf '%s\n' "$pid"
         ;;
     esac
@@ -288,6 +292,40 @@ check_all() {
   curl --fail --silent --show-error http://127.0.0.1:8501/agent-health/admin; printf '\n'
   curl --fail --silent --show-error http://127.0.0.1:8501/asr/health; printf '\n'
   curl --fail --silent --show-error http://127.0.0.1:8501/_stcore/health; printf '\n'
+  local electron_health
+  if electron_health="$(curl --fail --silent --max-time 2 \
+      "http://127.0.0.1:$PHYSICS_ELECTRON_EM_PORT/__physics_health__")"; then
+    [[ "$electron_health" == *"physics-experiment:electron-em"* ]] || {
+      echo "电子荷质比实验健康标识不匹配。" >&2
+      return 1
+    }
+    electron_health="$(curl --fail --silent --show-error \
+      http://127.0.0.1:8501/experiments/electron-em/__physics_health__)"
+    [[ "$electron_health" == *"physics-experiment:electron-em"* ]] || {
+      echo "电子荷质比实验的 8501 代理健康标识不匹配。" >&2
+      return 1
+    }
+    echo "electron_em: 直接与 8501 代理健康检查通过"
+  else
+    echo "electron_em: 按需服务尚未启动（首次打开电子荷质比页面后再检查）"
+  fi
+  local photoelectric_health
+  if photoelectric_health="$(curl --fail --silent --max-time 2 \
+      "http://127.0.0.1:$PHYSICS_PHOTOELECTRIC_PORT/__physics_health__")"; then
+    [[ "$photoelectric_health" == *"physics-experiment:photoelectric"* ]] || {
+      echo "光电效应实验健康标识不匹配。" >&2
+      return 1
+    }
+    photoelectric_health="$(curl --fail --silent --show-error \
+      http://127.0.0.1:8501/experiments/photoelectric/__physics_health__)"
+    [[ "$photoelectric_health" == *"physics-experiment:photoelectric"* ]] || {
+      echo "光电效应实验的 8501 代理健康标识不匹配。" >&2
+      return 1
+    }
+    echo "photoelectric: 直接与 8501 代理健康检查通过"
+  else
+    echo "photoelectric: 按需服务尚未启动（首次打开光电效应页面后再检查）"
+  fi
   if [[ -n "$PHYSICS_GATEWAY_HTTPS_PORT" ]]; then
     curl --insecure --fail --silent --show-error \
       "https://127.0.0.1:$PHYSICS_GATEWAY_HTTPS_PORT$PHYSICS_GATEWAY_PUBLIC_PREFIX/asr/health"

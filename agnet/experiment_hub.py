@@ -33,9 +33,12 @@ class ExperimentService:
     port_env: str
     default_port: int
     julia_host_env: str
+    julia_port_env: str
+    julia_proxy_env: str
     ready_event: str
     failed_event: str
     identity_marker: str
+    root_marker: str
     height: int
 
 
@@ -47,10 +50,13 @@ LISSAJOUS = ExperimentService(
     port_env="PHYSICS_LISSAJOUS_PORT",
     default_port=9384,
     julia_host_env="LISSAJOUS_WEB_HOST",
+    julia_port_env="LISSAJOUS_WEB_PORT",
+    julia_proxy_env="LISSAJOUS_WEB_PROXY_URL",
     ready_event="lissajous-wgl-ready",
     failed_event="lissajous-wgl-failed",
     identity_marker="physics-experiment:lissajous",
-    height=840,
+    root_marker="李萨如图形",
+    height=800,
 )
 
 SOUND_SPEED = ExperimentService(
@@ -61,13 +67,53 @@ SOUND_SPEED = ExperimentService(
     port_env="PHYSICS_SOUND_SPEED_PORT",
     default_port=9385,
     julia_host_env="SOUND_SPEED_WEB_HOST",
+    julia_port_env="SOUND_SPEED_WEB_PORT",
+    julia_proxy_env="SOUND_SPEED_WEB_PROXY_URL",
     ready_event="sound-speed-wgl-ready",
     failed_event="sound-speed-wgl-failed",
     identity_marker="physics-experiment:sound-speed",
-    height=950,
+    root_marker="声速测量",
+    height=740,
 )
 
-SERVICES = {service.key: service for service in (LISSAJOUS, SOUND_SPEED)}
+ELECTRON_EM = ExperimentService(
+    key="electron_em",
+    title="电子荷质比可视化实验",
+    project_dir=EXPERIMENT_ROOT / "electron_em",
+    web_path=EXPERIMENT_ROOT / "electron_em" / "web.jl",
+    port_env="PHYSICS_ELECTRON_EM_PORT",
+    default_port=9386,
+    julia_host_env="ELECTRON_EM_WEB_HOST",
+    julia_port_env="ELECTRON_EM_WEB_PORT",
+    julia_proxy_env="ELECTRON_EM_WEB_PROXY_URL",
+    ready_event="electron-em-wgl-ready",
+    failed_event="electron-em-wgl-failed",
+    identity_marker="physics-experiment:electron-em",
+    root_marker="电子荷质比",
+    height=740,
+)
+
+PHOTOELECTRIC = ExperimentService(
+    key="photoelectric",
+    title="光电效应可视化实验",
+    project_dir=EXPERIMENT_ROOT / "photoelectric",
+    web_path=EXPERIMENT_ROOT / "photoelectric" / "web.jl",
+    port_env="PHYSICS_PHOTOELECTRIC_PORT",
+    default_port=9387,
+    julia_host_env="PHOTOELECTRIC_WEB_HOST",
+    julia_port_env="PHOTOELECTRIC_WEB_PORT",
+    julia_proxy_env="PHOTOELECTRIC_WEB_PROXY_URL",
+    ready_event="photoelectric-wgl-ready",
+    failed_event="photoelectric-wgl-failed",
+    identity_marker="physics-experiment:photoelectric",
+    root_marker="光电效应",
+    height=740,
+)
+
+SERVICES = {
+    service.key: service
+    for service in (LISSAJOUS, SOUND_SPEED, ELECTRON_EM, PHOTOELECTRIC)
+}
 _processes: dict[str, subprocess.Popen] = {}
 _logs: dict[str, IO[str]] = {}
 _locks = {key: threading.Lock() for key in SERVICES}
@@ -123,7 +169,7 @@ def service_ready(service: ExperimentService, timeout: float = 0.45) -> bool:
     # keeps compatibility with an already-running pre-healthcheck experiment.
     markers = (
         ("/__physics_health__", service.identity_marker),
-        ("/", "李萨如图形" if service.key == "lissajous" else "声速测量"),
+        ("/", service.root_marker),
     )
     for path, marker in markers:
         try:
@@ -184,12 +230,8 @@ def launch_service(service: ExperimentService) -> subprocess.Popen | None:
     # Experiments are private upstreams. Browsers reach them only through the
     # same-origin /experiments/... routes on the main 8501 gateway.
     environment[service.julia_host_env] = "127.0.0.1"
-    if service.key == "lissajous":
-        environment["LISSAJOUS_WEB_PORT"] = str(service_port(service))
-        environment["LISSAJOUS_WEB_PROXY_URL"] = service_proxy_url(service)
-    else:
-        environment["SOUND_SPEED_WEB_PORT"] = str(service_port(service))
-        environment["SOUND_SPEED_WEB_PROXY_URL"] = service_proxy_url(service)
+    environment[service.julia_port_env] = str(service_port(service))
+    environment[service.julia_proxy_env] = service_proxy_url(service)
 
     creation_flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
     creation_flags |= getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -298,7 +340,7 @@ def render_experiment_hub() -> None:
         st.session_state.visual_experiment_name = "李萨如图形"
     selected = st.segmented_control(
         "选择实验",
-        ["李萨如图形", "声速测量"],
+        ["李萨如图形", "声速测量", "电子荷质比", "光电效应"],
         key="visual_experiment_name",
         width="stretch",
     ) or "李萨如图形"
@@ -332,17 +374,93 @@ def render_experiment_hub() -> None:
             routes[experiment_name],
             f"李萨如图形 · {experiment_name}",
         )
-    else:
+    elif selected == "声速测量":
         st.markdown(
             """
             <div class="experiment-summary">
               <h3>∿ 声速四种测量方法综合实验</h3>
-              <p>在同一实验中切换回声法、双麦克风时差法、示波器相位差法和驻波法，并比较误差来源。</p>
+              <p>分别研究回声法、双麦克风时差法、示波器相位差法和驻波法，并比较误差来源。</p>
             </div>
             """,
             unsafe_allow_html=True,
         )
-        _start_and_render(SOUND_SPEED)
+        routes = {
+            "回声法": "/echo",
+            "双麦克风时差法": "/dual",
+            "示波器相位差法": "/phase",
+            "驻波法": "/standing",
+        }
+        if "sound_speed_experiment_name" not in st.session_state:
+            st.session_state.sound_speed_experiment_name = "回声法"
+        experiment_name = st.segmented_control(
+            "实验方法",
+            list(routes),
+            key="sound_speed_experiment_name",
+            width="stretch",
+        ) or "回声法"
+        _start_and_render(
+            SOUND_SPEED,
+            routes[experiment_name],
+            f"声速测量 · {experiment_name}",
+        )
+    elif selected == "电子荷质比":
+        st.markdown(
+            """
+            <div class="experiment-summary">
+              <h3>⊖ 电子荷质比可视化实验</h3>
+              <p>分别研究电子束圆轨道、亥姆霍兹线圈磁场、纵向磁聚焦与汤姆孙交叉电磁场测量。</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        routes = {
+            "电子束圆轨道": "/circular",
+            "亥姆霍兹磁场标定": "/helmholtz",
+            "纵向磁聚焦": "/focus",
+            "汤姆孙交叉场": "/thomson",
+        }
+        if "electron_em_experiment_name" not in st.session_state:
+            st.session_state.electron_em_experiment_name = "电子束圆轨道"
+        experiment_name = st.segmented_control(
+            "实验项目",
+            list(routes),
+            key="electron_em_experiment_name",
+            width="stretch",
+        ) or "电子束圆轨道"
+        _start_and_render(
+            ELECTRON_EM,
+            routes[experiment_name],
+            f"电子荷质比 · {experiment_name}",
+        )
+    else:
+        st.markdown(
+            """
+            <div class="experiment-summary">
+              <h3>☀ 光电效应可视化实验</h3>
+              <p>分别研究光电管伏安特性、普朗克常量线性拟合、截止频率与光强规律，以及遏止电压判读和系统误差。</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        routes = {
+            "光电管伏安特性": "/iv",
+            "普朗克常量拟合": "/planck",
+            "截止频率与光强": "/threshold",
+            "遏止电压判读": "/uncertainty",
+        }
+        if "photoelectric_experiment_name" not in st.session_state:
+            st.session_state.photoelectric_experiment_name = "光电管伏安特性"
+        experiment_name = st.segmented_control(
+            "实验项目",
+            list(routes),
+            key="photoelectric_experiment_name",
+            width="stretch",
+        ) or "光电管伏安特性"
+        _start_and_render(
+            PHOTOELECTRIC,
+            routes[experiment_name],
+            f"光电效应 · {experiment_name}",
+        )
 
 
 _EMBED_HTML = r"""
@@ -355,7 +473,7 @@ _EMBED_HTML = r"""
   * { box-sizing:border-box; }
   html,body { margin:0; overflow:hidden; background:transparent;
     font-family:system-ui,"Microsoft YaHei",sans-serif; }
-  .stage { position:relative; width:100%; height:100vh; min-height:800px;
+  .stage { position:relative; width:100%; height:100vh; min-height:0;
     overflow:hidden; background:#0b0f14; border:1px solid #27313d; border-radius:10px; }
   iframe { display:block; width:100%; height:100%; border:0; background:#0b0f14; }
   .loading { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;

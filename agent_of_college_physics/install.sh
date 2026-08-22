@@ -63,7 +63,9 @@ mkdir -p \
   "$RUNTIME_ROOT/experiment-output/sound-speed" \
   "$CONFIG_ROOT" \
   "$APP_ROOT/agnet/runtime" \
+  "$APP_ROOT/agnet/runtime/experiments" \
   "$APP_ROOT/agnet/experiments/sound_speed/output"
+touch "$APP_ROOT/agnet/runtime/experiments/photoelectric.log"
 
 echo "[1/8] 在项目目录准备中文字体……"
 if ! printf '%s  %s\n' "$CJK_FONT_SHA256" "$CJK_FONT_PATH" | \
@@ -178,7 +180,7 @@ fi
 
 echo "[7/8] 初始化可视化实验……"
 if [[ "$PRECOMPILE_EXPERIMENTS" == "1" ]]; then
-  for experiment in lissajous sound_speed; do
+  for experiment in lissajous sound_speed electron_em photoelectric; do
     env HOME="$HOME" JULIA_DEPOT_PATH="$RUNTIME_ROOT/julia-depot" \
       JULIA_NUM_THREADS="${JULIA_NUM_THREADS:-2}" \
       "$JULIA_BIN" --startup-file=no --project="$APP_ROOT/agnet/experiments/$experiment" \

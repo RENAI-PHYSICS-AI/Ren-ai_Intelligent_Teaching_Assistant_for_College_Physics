@@ -600,9 +600,10 @@ function detune_figure()
 end
 
 const PAGE_STYLE = """
-html, body { margin: 0; min-height: 100%; background: #0b0f14; color: #eef3f8; }
-body { overflow-x: auto; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif; }
-.lab-page { min-width: 960px; min-height: 760px; padding: 8px; box-sizing: border-box; background: #0b0f14; }
+html, body { margin: 0; width: 100%; height: 100%; background: #0b0f14; color: #eef3f8; }
+body { overflow: hidden; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif; }
+.lab-page { position: absolute; left: 50%; top: 0; width: 960px; height: 760px; padding: 0;
+    box-sizing: border-box; background: #0b0f14; transform-origin: top center; }
 body:has(.wglmakie-spinner)::before {
     content: "正在初始化 Julia / WGLMakie / Bonito 交互图形";
     position: fixed;
@@ -642,6 +643,16 @@ const CLIENT_STATUS_SCRIPT = """
     const send = (type, detail = "") => {
         parentWindow.postMessage({ type, detail }, "*");
     };
+    const fitLayout = () => {
+        const page = document.querySelector(".lab-page");
+        if (!page) return;
+        const availableWidth = Math.max(320, document.documentElement.clientWidth - 16);
+        const availableHeight = Math.max(320, document.documentElement.clientHeight - 8);
+        const scale = Math.min(1, availableWidth / 960, availableHeight / 760);
+        page.style.transform = `translateX(-50%) scale(\${scale})`;
+    };
+    fitLayout();
+    window.addEventListener("resize", fitLayout);
     const showDiagnostic = detail => {
         let box = document.getElementById("lissajous-diagnostic");
         if (!box) {
