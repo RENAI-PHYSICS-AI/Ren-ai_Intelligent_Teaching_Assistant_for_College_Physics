@@ -15,8 +15,8 @@
 - 流式讲解：支持连续对话、LaTeX 公式和回答位置跟随。
 - 安全可视化：模型生成结构化绘图规范，由本地校验后使用 Plotly 渲染。
 - 双学习模式：在侧栏切换“智能助教”和“可视化实验”。
-- 交互实验：内置李萨如图形和声速测量两套 Julia/WGLMakie 实验。
-- 用户系统：支持注册登录、匿名进入、历史恢复、单条回答删除及 Markdown 导出。
+- 交互实验：内置李萨如图形、声速测量、电子荷质比和光电效应四套 Julia/WGLMakie 实验。
+- 用户系统：支持注册登录、匿名进入、历史恢复、按问答轮次删除及 Markdown 导出；未回答问题也可单独删除。
 - 管理后台：支持身份名册、学习活动、反馈和运行错误统计。
 - 主题与快捷操作：支持亮色、暗色、跟随系统以及随机快速提问。
 - 无模型降级：模型不可用时仍可返回本地检索结果。
@@ -33,9 +33,11 @@
 | --- | ---: |
 | 扫描文件 | 668 |
 | 教学素材文本块 | 35,973 |
+| 电子荷质比专题文本块 | 1,336 |
 | 李萨如专题文本块 | 10,122 |
 | 声速专题文本块 | 4,047 |
-| 合计文本块 | 50,142 |
+| 光电效应专题文本块 | 301 |
+| 合计文本块 | 51,779 |
 
 其中包括 114 个 PDF、145 个 PPT/PPTX/PPTM/POT 和 389 个 DOC/DOCX 文件。检索使用本地 BM25，并对中文文本加入相邻双字切分。教材正文优先，习题解答次之，其他教学资料和实验知识作为补充。
 
@@ -53,15 +55,20 @@ flowchart LR
     E --> C
     C --> F[相关教材上下文]
     E --> G[历史消息与当前问题]
-    F --> H[OpenAI-compatible 视觉语言模型]
+    E --> R{是否包含图片}
+    R -- 是 --> V[Qwen3-VL-30B 忠实识图]
+    V --> X[图片识别文本]
+    F --> H[GLM-4.7-Flash 组织最终答案]
     G --> H
+    X --> H
+    R -- 否 --> H
     O[Tavily 按需联网检索] --> H
     H --> I[流式讲解与 LaTeX]
     H --> J[受限可视化规范]
     J --> K[Plotly 图表或动画演示]
     E --> L[(SQLite 用户、历史与学情数据)]
     M[管理员后台] --> L
-    E --> N[李萨如与声速实验]
+    E --> N[李萨如、声速、电子荷质比与光电效应实验]
 ```
 
 一次普通问答会经历以下过程：
@@ -91,7 +98,7 @@ flowchart LR
 │  ├─ voice_input.py        # 浏览器录音与流式转写组件
 │  ├─ asr_service.py        # Paraformer 内部 WebSocket 服务
 │  ├─ download_asr_model.py # 固定版本 INT8 模型下载与校验
-│  ├─ experiments/          # 两套 Julia/WGLMakie 实验
+│  ├─ experiments/          # 四套 Julia/WGLMakie 实验
 │  ├─ storage.py            # 用户、会话和 Markdown 导出
 │  ├─ analytics_db.py       # 学情与反馈数据
 │  ├─ admin_api.py          # 管理员后台
@@ -143,7 +150,7 @@ Windows 版端口：
 | Streamlit 内部服务 | 仅监听本机 |
 | 管理员内部服务 | 仅监听本机 |
 | Paraformer 语音服务 | `127.0.0.1:8604`，由 `8501/asr/...` 代理 |
-| 李萨如与声速实验 | 仅监听本机，通过 `8501/experiments/...` 内嵌 |
+| 李萨如、声速、电子荷质比与光电效应实验 | 仅监听本机，通过 `8501/experiments/...` 内嵌 |
 
 ### 模型及管理员配置
 
@@ -196,6 +203,7 @@ Windows 与 Rocky 版本均已配置并启用 Tavily Search API 联网补充。�
 | `PHYSICS_WEB_SEARCH_MAX_RESULTS` | 单次最多使用的搜索结果数，默认 5 |
 | `PHYSICS_WEB_SEARCH_TIMEOUT_SECONDS` | 联网搜索读取超时，默认 8 秒 |
 | `PHYSICS_WEB_SEARCH_CACHE_MINUTES` | 相同问题搜索结果缓存时间，默认 30 分钟 |
+| `PHYSICS_USER_SESSION_SECONDS` | 注册用户刷新后保持登录的时长，默认 604800 秒（7 天），允许 1 小时至 30 天 |
 | `PHYSICS_API_KEY` | 模型服务密钥；无鉴权的本地服务可留空 |
 | `DASHSCOPE_API_KEY` | 兼容的 Qwen/DashScope 回退密钥 |
 | `PHYSICS_CONTEXT_WINDOW` | 模型上下文窗口预算 |
@@ -217,13 +225,13 @@ Windows 与 Rocky 版本均已配置并启用 Tavily Search API 联网补充。�
 .\agnet\enable_lan.ps1
 ```
 
-脚本只为专用网络开放统一入口 `8501`。管理员页面和两套可视化实验均从主站内嵌访问，不再单独开放端口。其他设备访问 `http://Windows主机IP:8501`。
+脚本只为专用网络开放统一入口 `8501`。管理员页面和四套可视化实验均从主站内嵌访问，不再单独开放端口。其他设备访问 `http://Windows主机IP:8501`。
 
 > Edge/Chrome 只允许安全来源调用麦克风。`http://localhost:8501` 可录音，但其他电脑通过普通 HTTP IP 地址访问时，语音按钮会提示需要 HTTPS；正式局域网语音输入应在统一入口配置客户端信任的 HTTPS 证书，WebSocket 会自动使用 WSS。
 
 ## Rocky Linux 10 独立版
 
-Rocky 版已包含应用、知识库、原始教学素材、两套实验以及迁移时的用户和历史数据。它只安装在复制后的普通用户目录中：
+Rocky 版已包含应用、知识库、原始教学素材、四套实验以及迁移时的用户和历史数据。它只安装在复制后的普通用户目录中：
 
 - 不允许使用 `sudo` 或 root 执行；
 - 不写入 `/opt`、`/etc`、`/var` 或 `/usr/local`；
@@ -245,15 +253,18 @@ cd ~/agent_of_college_physics
 bash install.sh
 ```
 
-安装完成后可直接访问 `http://Rocky服务器IP:8501`。当前服务器也通过反向代理提供入口
-`http://192.168.222.147:1234/agent/`；使用该子路径入口时，需要在
+`8501` 是 Rocky 服务器内部供反向代理使用的统一上游，不作为当前校园网入口公开。当前生产环境只通过以下 HTTPS 地址访问：
+
+[https://192.168.222.147:1234/agent/](https://192.168.222.147:1234/agent/)
+
+使用该子路径入口时，需要在
 `config/physics-assistant.env` 中设置：
 
 ```ini
-PHYSICS_PUBLIC_BASE_URL=http://192.168.222.147:1234/agent
+PHYSICS_PUBLIC_BASE_URL=https://192.168.222.147:1234/agent
 ```
 
-该值用于让两套内嵌实验和 Paraformer 语音服务正确生成带 `/agent/` 前缀的资源与 WebSocket 地址，并校验浏览器看到的公开端口。普通 HTTP 可问答但不能直接取得远程麦克风权限；项目另带用户目录级 `setup_https.sh`，可在网络放行 8443 后启用 HTTPS/WSS。详细要求、客户端证书信任和当前 Edge 临时兼容方法见 [Rocky 部署说明](agent_of_college_physics/README.md)。
+该值用于让四套可视化实验、Paraformer 语音服务、持久登录和管理员页面正确生成带 `/agent/` 前缀的 HTTPS/WSS 地址，并校验浏览器看到的公开端口。项目自带的 `8443` HTTPS 网关只作为独立部署时的备用方案，当前未对校园网络开放。详细要求见 [Rocky 部署说明](agent_of_college_physics/README.md)。
 
 ### 服务管理
 
@@ -269,18 +280,19 @@ bash manage.sh logs
 
 Rocky 版不会注册系统级开机服务，服务器重启后需再次执行 `bash manage.sh start`。
 
-Rocky 版使用目录内的 Python 网关公开 HTTP 入口，并可选启用独立 HTTPS/WSS 入口：
+Rocky 版使用目录内的 Python 网关提供内部 HTTP 上游，当前由学校 `1234` 反向代理统一提供生产 HTTPS/WSS；项目自带 HTTPS 网关仅作备用：
 
 | 服务 | 监听地址 |
 | --- | --- |
-| HTTP 兼容入口 | `0.0.0.0:8501` |
-| HTTPS/WSS 入口 | `0.0.0.0:8443`，执行 `setup_https.sh` 后启用 |
+| 当前校内公开入口 | `https://192.168.222.147:1234/agent/` |
+| HTTP 内部上游 | `0.0.0.0:8501`，只供服务器内部和现有反向代理使用，不对校园网络开放 |
+| 备用 HTTPS/WSS 入口 | `0.0.0.0:8443`，仅在独立部署执行 `setup_https.sh` 后启用，当前校园网络未开放 |
 | Streamlit 内部服务 | `127.0.0.1:8502` |
 | 管理员内部服务 | `127.0.0.1:8603` |
 | Paraformer 语音服务 | `127.0.0.1:8604`，仅由统一入口代理 |
-| 李萨如与声速实验 | 仅监听 `127.0.0.1`，由统一入口代理 |
+| 李萨如、声速、电子荷质比与光电效应实验 | 仅监听 `127.0.0.1`，由统一入口代理 |
 
-安装脚本不会修改防火墙。若局域网客户端无法访问，应由服务器管理员按实际网段放行 TCP `8501`；需要受信任的远程麦克风时还应放行 `8443`。Streamlit、管理员、ASR 和实验内部服务均不应对外开放。
+安装脚本不会修改防火墙。当前校园网络只需访问已有的 TCP `1234` HTTPS 反向代理；不要向校园网络开放 `8501`、`8443`、Streamlit、管理员、ASR 或实验内部端口。
 
 Rocky 模型配置位于：
 
@@ -290,7 +302,7 @@ Rocky 模型配置位于：
 
 修改后执行 `bash manage.sh restart`。
 
-Rocky 安装脚本会在用户目录中准备 Python 3.13、项目虚拟环境、Julia 1.10.10 和 Julia depot。安装阶段需要访问 Python 包源与 Julia 官方下载站；回答阶段由模型服务检索网络内容，应用自身不启动独立网页爬虫。
+Rocky 安装脚本会在用户目录中准备 Python 3.13、项目虚拟环境、Julia 1.10.10 和 Julia depot。安装阶段需要访问 Python 包源与 Julia 官方下载站；回答阶段由应用按规则调用 Tavily API，并将清洗后的结果交给本地 GLM 组织答案，模型服务自身不负责网页检索，应用也不启动独立网页爬虫。
 
 安装器还会从固定版本的 Sherpa-ONNX 模型仓库下载三个经过 SHA-256 校验的 Paraformer INT8 文件，总计约 226.5 MiB；不会保留 1 GiB 的完整模型归档或 FP32 文件。
 
@@ -300,15 +312,17 @@ Rocky 安装脚本会在用户目录中准备 Python 3.13、项目虚拟环境�
 
 语音后端采用 `sherpa-onnx 1.13.4` 和中英双语 `Paraformer-zh-streaming` INT8 模型，以独立的轻量运行时提供服务，不依赖 PyTorch、FFmpeg 或系统麦克风设备。模型固定到公开仓库的具体 revision 并校验每个文件的大小与 SHA-256，许可证为 Apache-2.0。该模型不提供词级时间戳；Sherpa 的在线 Paraformer 接口也没有真正的热词偏置，本项目仅对少量常见物理术语做确定性纠错。
 
-浏览器麦克风权限有一项必须满足的前提：非 `localhost` 页面通常需要客户端信任的 HTTPS。Rocky 版可执行 `PHYSICS_HTTPS_HOST=<服务器IP> bash setup_https.sh` 生成项目专用入口；客户端只导入 CA 公钥证书，绝不能复制 CA 私钥或服务器私钥。若网络暂时只放行现有 HTTP 反代，可在受控内网的 Edge 上为该单一来源配置官方安全来源例外，代价是语音仍以未加密 HTTP/WS 传输。ASR 服务自身始终只监听回环地址，不需要对外开放 `8604`。
+浏览器麦克风权限有一项必须满足的前提：非 `localhost` 页面通常需要客户端信任的 HTTPS。当前生产入口已统一为 `https://192.168.222.147:1234/agent/`，浏览器通过同源 WSS 使用语音服务，不需要开放 `8443` 或 `8604`。`setup_https.sh` 只用于没有外层 HTTPS 反向代理的独立备用部署；客户端只可导入 CA 公钥证书，绝不能复制 CA 私钥或服务器私钥。
 
 ## 登录、历史与管理员后台
 
 首次打开主页会先显示登录入口：
 
-- **注册用户**：登录后持续保存对话历史，可删除任意一条回答、恢复会话并导出 Markdown；
-- **匿名用户**：无需注册即可进入，消息只在当前浏览器会话中保留，也可删除单条回答或手动导出 Markdown；
+- **注册用户**：登录后持续保存对话历史，可按轮次同时删除问题和回答，也可删除未回答的问题、恢复会话并导出 Markdown；浏览器使用签名的 HttpOnly Cookie 保持登录，刷新页面不会要求重新输入密码，默认有效期为 7 天；
+- **匿名用户**：无需注册即可进入，消息只在当前浏览器会话中保留，也可按同样规则删除问答或手动导出 Markdown；
 - **管理员用户**：在同一登录页面验证账号后跳转管理员页面。
+
+注册用户的保持登录令牌不包含密码，由服务器签名，并在 HTTPS 下自动设置 `Secure` 属性；退出登录会同步清除浏览器 Cookie。Rocky 可通过 `PHYSICS_USER_SESSION_SECONDS` 调整有效期，允许范围为 1 小时至 30 天。
 
 注册账号、消息、反馈、身份名册和学情记录统一保存在：
 
@@ -325,7 +339,7 @@ agnet/data/assistant.db
 - Excel 身份名册导入及账号关联。
 - 身份名册可在管理页面逐条新增、修改和删除；已绑定账号的记录会受到保护。
 
-Windows 版管理员 API 默认仅监听 `127.0.0.1:8603`。Rocky 版由 `8501` 用户级网关转发管理员路由，因此学生页面和管理员页面共用一个对外端口，`8603` 不对局域网开放。
+Windows 版管理员 API 默认仅监听 `127.0.0.1:8603`。Rocky 版由内部 `8501` 网关转发管理员路由，因此学生页面和管理员页面在生产环境共用 `https://192.168.222.147:1234/agent/` 同源入口，`8603` 不对局域网开放。
 
 每次新问答的分阶段响应耗时仅在管理员页面显示，学生界面不展示开发联调数据；管理员可查看最近 30 次问答的知识检索、上下文拼装、历史加载、首段答案、模型生成和端到端耗时。
 
@@ -351,6 +365,8 @@ cd ~/agent_of_college_physics
 
 - `chunks.jsonl`：可检索文本块；
 - `manifest.json`：文件数、文本块数、失败记录和资料策略；
+- `imports/electron_em.jsonl`：电子荷质比、圆轨道法、磁聚焦、亥姆霍兹线圈与汤姆孙法专题知识；
+- `imports/photoelectric.jsonl`：光电效应、伏安特性、红限、普朗克常量拟合和遏止电压判读专题知识；
 - `imports/lissajous.jsonl`：李萨如实验专题知识；
 - `imports/sound_speed.jsonl`：声速测量专题知识。
 
@@ -368,6 +384,10 @@ cd ~/agent_of_college_physics
 
 - 李萨如图形：相位差、振幅比、有理频率比和频率失谐；
 - 声速测量：回声法、双麦克风时差法、示波器相位差法和驻波法。
+- 电子荷质比：电子束圆轨道、亥姆霍兹磁场标定、纵向磁聚焦和汤姆孙交叉电磁场。
+- 光电效应：伏安特性与光强、普朗克常量拟合、红限与量子规律、遏止电压判读与系统误差。
+
+四类实验均拆分为四个独立页面，只构建和加载当前选中的页面：李萨如为 `/phase`、`/amplitude`、`/ratio`、`/detune`；声速为 `/echo`、`/dual`、`/phase`、`/standing`；电子荷质比为 `/circular`、`/helmholtz`、`/focus`、`/thomson`；光电效应为 `/iv`、`/planck`、`/threshold`、`/uncertainty`。
 
 实验按需启动，主要图形在客户端浏览器通过 WebGL2 渲染。Windows 首次使用前可手动初始化：
 
@@ -375,6 +395,8 @@ cd ~/agent_of_college_physics
 cd .\agnet
 julia --project=experiments/lissajous -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
 julia --project=experiments/sound_speed -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
+julia --project=experiments/electron_em -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
+julia --project=experiments/photoelectric -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
 ```
 
 Rocky 的 `install.sh` 默认完成相同的初始化；可用 `PRECOMPILE_EXPERIMENTS=0 bash install.sh` 暂时跳过。
@@ -390,13 +412,14 @@ Rocky 的 `install.sh` 默认完成相同的初始化；可用 `PRECOMPILE_EXPER
 
 回答中的可视化代码会先显示，再在其后生成运行演示窗口。项目对数学表达式、变量、函数、指数范围及数据规模进行白名单校验，不允许模型直接执行任意 Python、Shell、文件读写或网络请求。支持的输出由实际绘图规范决定，可包括交互图、静态图以及 GIF/MP4 动画。
 
-图片题可直接粘贴到聊天输入框，也可通过上传入口选择文件。视觉模型会同时接收图片、文字追问、近期对话和本地检索内容，因此可以继续追问图片中的某一步推导。
+图片题可直接粘贴到聊天输入框，也可通过上传入口选择文件。Qwen3-VL-30B 只接收图片和当前学生问题并忠实提取可见信息；图片原始数据不会发送给 GLM。识别文本再与近期对话、本地知识库和按需联网结果一起交给 GLM-4.7-Flash，因此仍可继续追问图片中的某一步推导。
 
 ## 数据、迁移与安全
 
 - 注册账号、历史、反馈和学情数据位于 `agnet/data/assistant.db`。
 - 匿名用户无需注册；匿名历史只在当前会话保留，但仍可导出 Markdown。
 - 模型服务不可用不会损坏知识库或用户数据库。
+- `agnet/data/`、`agnet/runtime/`、Rocky 的 `config/physics-assistant.env` 以及 TLS 私钥都属于本机运行数据，不进入 Git；数据库同步应使用受控迁移流程。
 - 可视化模块只接受经过限制的数学表达式，不执行任意 Shell、文件或网络代码。
 - 发布仓库前请移除受版权保护的教材、内部数据库和私密配置。
 - 模型回答可能存在错误，关键公式、适用条件和数值结果应由教师或学习者复核。
@@ -450,11 +473,11 @@ Stop-Process -Id <OwningProcess>
 
 ### 实验页面无法打开
 
-确认 Julia 依赖已完成初始化、主站 `8501` 可以访问且客户端浏览器支持 WebGL2。实验通过主站同源内嵌，不需要另开端口。Rocky 可运行 `bash manage.sh logs` 查看主服务日志；Julia 实验日志位于应用运行目录的 `runtime/experiments/`。
+确认 Julia 依赖已完成初始化、服务器内部 `8501` 上游健康、公开入口 `https://192.168.222.147:1234/agent/` 可以访问且客户端浏览器支持 WebGL2。实验通过主站同源内嵌，不需要另开端口。Rocky 可运行 `bash manage.sh logs` 查看主服务日志；Julia 实验日志位于应用运行目录的 `runtime/experiments/`。
 
 ### 语音按钮提示需要 HTTPS
 
-这是浏览器的麦克风安全策略，不是 Paraformer 故障。`localhost` 可使用普通 HTTP；局域网正式部署应使用受信任的 HTTPS/WSS。Rocky 先运行 `bash setup_https.sh`，再确认 8443 已由网络策略放行并按部署说明导入 CA 公钥。若当前网络只能访问 HTTP，可使用部署说明中的 Edge 单来源兼容策略，关闭并重新打开 Edge 后生效。后端可依次检查 `http://127.0.0.1:8604/health`、`http://127.0.0.1:8501/asr/health` 和公开入口的 `/agent/asr/health`；Rocky 日志位于 `.runtime/logs/asr.log`。
+这是浏览器的麦克风安全策略，不是 Paraformer 故障。`localhost` 可使用普通 HTTP；学校服务器请统一访问 `https://192.168.222.147:1234/agent/`。后端可依次检查 `http://127.0.0.1:8604/health`、`http://127.0.0.1:8501/asr/health` 和 `https://192.168.222.147:1234/agent/asr/health`；Rocky 日志位于 `.runtime/logs/asr.log`。当前校园网络不使用也不开放备用 `8443` 入口。
 
 ### Rocky 重启后网页无法访问
 

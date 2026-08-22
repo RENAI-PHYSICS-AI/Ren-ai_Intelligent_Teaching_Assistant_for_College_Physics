@@ -1,6 +1,6 @@
 # Rocky Linux 10 用户目录版
 
-本目录是一套与 Windows 版独立的、可直接复制的 Rocky Linux 10 版本。应用、原始教学素材、RAG 知识库、迁移的用户/管理员/历史数据和两套可视化实验都在这里。
+本目录是一套与 Windows 版独立的、可直接复制的 Rocky Linux 10 版本，包含应用、整理后的教学资料、RAG 知识库和四套可视化实验。用户、管理员、历史、数据库备份和签名密钥属于本机运行数据，可通过受控流程迁移，但不进入 Git。
 
 回答以本地教材和 RAG 知识库为核心；遇到明确联网请求或时效性问题时，应用按需调用 Tavily 检索网络资料，再由本地模型统一组织答案。教材课程口径与网络资料不一致时以教材为准。
 
@@ -13,11 +13,10 @@
 当前目录约 `1.72 GiB`，包含：
 
 - 原始教学素材 668 个文件；
-- RAG 主知识库 50,142 个文本块；
-- Windows 端现有用户、管理员、对话、反馈、学情与身份名册；
+- RAG 主知识库 51,779 个文本块，其中电子荷质比专题文献 1,336 个、光电效应专题文献 301 个文本块；
 - 注册用户与匿名会话都支持逐条确认删除完整问答；只有问题而没有回答的孤立条目也可单独删除，注册用户的删除会同步写入数据库；
-- 数据库备份和管理员签名密钥；
-- 李萨如图形与声速测量实验。
+- 本机运行时可保存用户、管理员、对话、反馈、学情、身份名册、数据库备份和管理员签名密钥，这些内容均由 Git 忽略；
+- 李萨如图形、声速测量、电子荷质比与光电效应实验；四类实验均包含四个按需加载的独立页面。
 - Paraformer 中文流式语音输入服务及固定版本模型下载器。
 
 `.streamlit/secrets.toml` 和 API Key 不会明文迁移。模型连接写在安装后生成的 `config/physics-assistant.env` 中。
@@ -25,18 +24,20 @@
 ## 运行结构
 
 ```text
-局域网浏览器
-  ├─ http://服务器IP:8501             HTTP 兼容入口
-  └─ https://服务器IP:8443/agent/     可选 HTTPS/WSS 入口
-       └─ 用户级 Python 网关
-            ├─ 智能助教与 WebSocket → 127.0.0.1:8502
-            ├─ 管理员页面           → 127.0.0.1:8603
-            ├─ /asr/*               → 127.0.0.1:8604 Paraformer
-            ├─ /experiments/lissajous   → 本机李萨如实验
-            └─ /experiments/sound-speed → 本机声速实验
+校园网浏览器
+  └─ https://192.168.222.147:1234/agent/   当前唯一生产入口
+       └─ 现有 HTTPS 反向代理
+            └─ 8501 用户级 Python 网关（服务器内部上游）
+                 ├─ 智能助教与 WebSocket → 127.0.0.1:8502
+                 ├─ 管理员页面           → 127.0.0.1:8603
+                 ├─ /asr/*               → 127.0.0.1:8604 Paraformer
+                 ├─ /experiments/lissajous   → 本机李萨如实验
+                 ├─ /experiments/sound-speed → 本机声速实验
+                 ├─ /experiments/electron-em → 本机电子荷质比实验（127.0.0.1:9386）
+                 └─ /experiments/photoelectric → 本机光电效应实验（127.0.0.1:9387）
 ```
 
-所有实际后端服务只监听本机；8501 与可选的 8443 只负责同源代理。实验图形由访问者浏览器的 WebGL2 渲染。
+所有实际后端服务只监听本机或仅供服务器内部代理使用；校园网络只开放现有的 `1234` HTTPS 入口。`8501` 是反向代理内部上游，`8443` 是独立部署时的备用 HTTPS 网关，当前未对校园网络开放。实验图形由访问者浏览器的 WebGL2 渲染。
 
 ## 环境要求
 
@@ -108,7 +109,22 @@ bash manage.sh logs
 
 服务由 `nohup` 在后台运行，日志位于 `.runtime/logs/`。本版本不会注册系统开机服务；服务器重启后进入目录执行 `bash manage.sh start` 即可。
 
-`bash manage.sh status` 默认显示 `admin`、`asr`、`web`、`gateway` 四项运行中；配置 HTTPS 后还会显示 `gateway_https`。`bash manage.sh check` 会验证 ASR 的直接回环地址、8501 代理地址以及已配置的 HTTPS 地址。语音详细日志为 `.runtime/logs/asr.log`，HTTPS 网关日志为 `.runtime/logs/gateway_https.log`。`8604` 固定只绑定 `127.0.0.1`，不得加入防火墙放行列表。
+`bash manage.sh status` 默认显示 `admin`、`asr`、`web`、`gateway` 四项运行中；配置 HTTPS 后还会显示 `gateway_https`。`bash manage.sh check` 会验证 ASR 的直接回环地址、8501 代理地址以及已配置的 HTTPS 地址；电子荷质比或光电效应实验已按需启动时，还会分别校验 `9386`、`9387` 回环地址和 8501 代理路径。语音详细日志为 `.runtime/logs/asr.log`，HTTPS 网关日志为 `.runtime/logs/gateway_https.log`。`8604`、`9386`、`9387` 及其他实验内部端口固定只绑定 `127.0.0.1`，不得加入防火墙放行列表。
+
+## 可视化实验
+
+四套 Julia/WGLMakie 实验均由主站按需启动，学生浏览器只访问统一入口，不直连实验内部端口：
+
+- 李萨如图形：相位差、振幅比、有理频率比和频率失谐；
+- 声速测量：回声法、双麦克风时差法、示波器相位差法和驻波法；
+- 电子荷质比：电子束圆轨道、亥姆霍兹线圈磁场标定、纵向磁聚焦和汤姆孙交叉电磁场。
+- 光电效应：伏安特性与光强、普朗克常量拟合、红限与量子规律、遏止电压判读与系统误差。
+
+四类实验均只构建和加载当前选中的页面。李萨如子页面为 `/phase`、`/amplitude`、`/ratio`、`/detune`；声速子页面为 `/echo`、`/dual`、`/phase`、`/standing`。
+
+电子荷质比的公开基路径为 `/experiments/electron-em`，四个子页面分别是 `/circular`、`/helmholtz`、`/focus` 和 `/thomson`。它们共用一个只监听 `127.0.0.1:9386` 的内部服务，但分别构建和加载页面，避免打开一项实验时初始化其他三项。
+
+光电效应的公开基路径为 `/experiments/photoelectric`，四个子页面分别是 `/iv`、`/planck`、`/threshold` 和 `/uncertainty`。它们共用一个只监听 `127.0.0.1:9387` 的内部服务，也只构建当前选中的图形。
 
 ## 模型配置
 
@@ -136,7 +152,10 @@ PHYSICS_CHAT_NO_THINK_SUFFIX=/nothink
 PHYSICS_VISION_NO_THINK_SUFFIX=/no_think
 PHYSICS_API_KEY=
 ADMIN_LOGIN_URL=/admin-login
-PHYSICS_PUBLIC_BASE_URL=http://192.168.222.147:1234/agent
+USER_SESSION_LOGIN_URL=/session-login
+USER_SESSION_LOGOUT_URL=/session-logout
+PHYSICS_USER_SESSION_SECONDS=604800
+PHYSICS_PUBLIC_BASE_URL=https://192.168.222.147:1234/agent
 PHYSICS_ASR_PORT=8604
 PHYSICS_ASR_THREADS=4
 PHYSICS_ASR_BATCH_SIZE=4
@@ -145,18 +164,24 @@ PHYSICS_ASR_MAX_CONNECTIONS=4
 PHYSICS_ASR_MAX_AUDIO_SECONDS=180
 PHYSICS_ASR_IDLE_TIMEOUT_SECONDS=20
 PHYSICS_ASR_ALLOW_MISSING_ORIGIN=0
+PHYSICS_ELECTRON_EM_PORT=9386
+PHYSICS_ELECTRON_EM_UPSTREAM=http://127.0.0.1:9386
+PHYSICS_PHOTOELECTRIC_PORT=9387
+PHYSICS_PHOTOELECTRIC_UPSTREAM=http://127.0.0.1:9387
 ```
 
 当前对话和最终答案使用学校 Rocky 服务器 `tjracphy` 本机的 GLM-4.7-Flash，生产 API 标识为 `glm47-local-prod`；图片先由本机 Qwen3-VL-30B-A3B-Instruct 识别，生产 API 标识为 `qwen-vl30-local-prod`，识别文本再交给 GLM 结合知识库组织答案。`manage.sh start/restart` 会检查两个模型的本机设备标识、8K 上下文和4个并行槽；缺少时自动加载，加载命令不设置 TTL，因此空闲时不会自动卸载。服务器或 LM Studio 重启后再次执行 `bash manage.sh start` 即可恢复双模型常驻。
 
 当前 Rocky 与 Windows 版本均已配置并启用 Tavily Search API 联网补充。普通教材概念、公式推导和计算题不会联网；问题明确要求联网，或包含“最新、近期、目前、进展、现行标准”等时效性表达时才触发。应用只发送当前问题文本，不发送用户身份、历史记录或图片。结果经过清洗后作为不可信参考交给 GLM，并在答案末尾附真实来源链接；搜索失败会自动退回本地知识库，相同问题默认缓存 30 分钟。Rocky 密钥保存在 `config/physics-assistant.env`，Windows 密钥保存在 `.streamlit/secrets.toml`，两者都不得提交到 Git。
 
-Python 网关使管理员与学生端继续共用 8501。直接访问 8501 时可将
-`PHYSICS_PUBLIC_BASE_URL` 留空；若通过子路径反向代理，必须填写浏览器实际看到的
+注册用户登录后由 `/session-login` 换取服务器签名的 HttpOnly Cookie；刷新页面会重新核验数据库中的账号状态并恢复登录，默认有效期为 7 天。HTTPS 入口会为 Cookie 自动增加 `Secure` 属性，退出登录通过 `/session-logout` 清除 Cookie；`PHYSICS_USER_SESSION_SECONDS` 可在 1 小时至 30 天范围内调整。
+
+Python 网关使管理员与学生端在服务器内部共用 `8501` 上游。仅在独立本机调试、直接访问 8501 时可将
+`PHYSICS_PUBLIC_BASE_URL` 留空；当前生产环境通过子路径反向代理，必须填写浏览器实际看到的
 公开基址，否则可视化实验与语音 WebSocket 会丢失子路径，或因公开端口不一致而被同源校验拒绝。当前反向代理入口为：
 
 ```text
-http://192.168.222.147:1234/agent/
+https://192.168.222.147:1234/agent/
 ```
 
 修改配置后执行 `bash manage.sh restart`。实验仍以内嵌网页运行，不额外向局域网开放端口。
@@ -165,18 +190,22 @@ http://192.168.222.147:1234/agent/
 
 语音后端使用 `sherpa-onnx 1.13.4` 与中英双语 `Paraformer-zh-streaming` INT8，并作为本地独立服务运行。麦克风按钮位于输入框内部、发送按钮左侧。浏览器通过 AudioWorklet 采集麦克风，将音频连续重采样为 16 kHz Float32 PCM；中间结果显示在输入框上方浮层中，再次点按麦克风后把最终文字写入草稿，不会自动发送。模型不提供词级时间戳，Sherpa 的在线 Paraformer API 也没有真正的热词偏置。
 
-浏览器安全策略要求非 `localhost` 麦克风页面使用可信 HTTPS。当前公开入口 `http://192.168.222.147:1234/agent/` 可以正常问答，但普通 Edge/Chrome 会拒绝麦克风。本项目提供不需要 sudo 的用户级 HTTPS/WSS 网关：
+浏览器安全策略要求非 `localhost` 麦克风页面使用可信 HTTPS。当前生产入口已经统一为 `https://192.168.222.147:1234/agent/`，语音通过同源 WSS 工作；校园用户不应再访问 HTTP 入口，也不需要开放其他端口。
+
+### 备用 8443 HTTPS/WSS 入口
+
+仅在没有现有 HTTPS 反向代理的独立部署中，才需要使用项目自带的用户级 HTTPS/WSS 网关：
 
 ```bash
 cd ~/agent_of_college_physics
 PHYSICS_HTTPS_HOST=192.168.222.147 bash setup_https.sh
 ```
 
-脚本只写当前项目的 `config/tls/` 和运行配置，并启动 `https://192.168.222.147:8443/agent/`；不会修改 Nginx、系统证书、firewalld 或模型 API。服务器管理员仍须确保客户端到 TCP 8443 的网络路径已放行。`manage.sh check` 使用 `--insecure` 只验证服务存活，不代表客户端已经信任证书。
+脚本只写当前项目的 `config/tls/` 和运行配置，并启动备用 `https://192.168.222.147:8443/agent/`；不会修改 Nginx、系统证书、firewalld 或模型 API。当前校园网络没有开放 `8443`，生产访问仍只使用 `1234`。`manage.sh check` 使用 `--insecure` 只验证备用服务存活，不代表客户端已经信任证书。
 
-### Windows 客户端信任项目 CA
+### 备用 8443 入口的 Windows 证书信任
 
-只复制 CA **公钥证书**；不要复制 `physics-assistant-ca.key`、`server.key` 或整个 `config/tls` 目录：
+以下步骤只适用于测试备用 `8443` 入口；当前 `1234` 生产入口使用现有 HTTPS 反向代理，不需要为了本项目导入这套备用 CA。启用备用入口时，只复制 CA **公钥证书**；不要复制 `physics-assistant-ca.key`、`server.key` 或整个 `config/tls` 目录：
 
 ```powershell
 $certDir = Join-Path $env:LOCALAPPDATA 'RenaiPhysicsAssistant\certs'
@@ -187,7 +216,7 @@ Import-Certificate `
   -CertStoreLocation Cert:\CurrentUser\Root
 ```
 
-应先通过独立渠道核对证书 SHA-256 指纹，再关闭并重新打开浏览器。当前服务器证书只包含 `192.168.222.147` 的 IP SAN，必须使用完全相同的 IP；服务器 IP 或根 CA 变化后需要重新签发并重新信任。CA 私钥权限为 0600，只用于签发，绝不能分发到客户端。移除当前用户信任可执行：
+应先通过独立渠道核对证书 SHA-256 指纹，再关闭并重新打开浏览器。备用服务器证书只包含 `192.168.222.147` 的 IP SAN，必须使用完全相同的 IP；服务器 IP 或备用根 CA 变化后需要重新签发并重新信任。CA 私钥权限为 0600，只用于签发，绝不能分发到客户端。移除当前用户信任可执行：
 
 ```powershell
 Get-ChildItem Cert:\CurrentUser\Root |
@@ -195,42 +224,11 @@ Get-ChildItem Cert:\CurrentUser\Root |
   Remove-Item
 ```
 
-浏览器统一通过 `https://192.168.222.147:1234/agent/` 访问；Rocky 应用在服务器内部通过 `http://127.0.0.1:1235/v1` 调用本机模型，不受外部 HTTPS 入口影响。
+浏览器统一通过 `https://192.168.222.147:1234/agent/` 访问；Rocky 应用在服务器内部通过 `http://127.0.0.1:1235/v1` 调用本机模型，不受外部 HTTPS 入口影响。不要为当前生产环境配置 Edge 的 HTTP 安全来源例外，也不要把 `PHYSICS_PUBLIC_BASE_URL` 改回 HTTP。
 
-### 网络暂时只放行 HTTP 时的 Edge 兼容方式
+### 当前生产 HTTPS 反向代理
 
-如果 8443 被网络 ACL 拦截，可在受控内网的 Windows 当前用户上，仅为现有站点启用 Microsoft Edge 的 `OverrideSecurityRestrictionsOnInsecureOrigin` 策略：
-
-先确认服务器运行配置仍指向实际访问的 HTTP 基址；如果刚运行过 `setup_https.sh`，将这一行改回并重启：
-
-```ini
-PHYSICS_PUBLIC_BASE_URL=http://192.168.222.147:1234/agent
-```
-
-```bash
-bash manage.sh restart
-```
-
-```powershell
-$p = 'HKCU:\Software\Policies\Microsoft\Edge\OverrideSecurityRestrictionsOnInsecureOrigin'
-New-Item -Path $p -Force | Out-Null
-New-ItemProperty -Path $p -Name 1 -PropertyType String `
-  -Value 'http://192.168.222.147:1234/' -Force | Out-Null
-```
-
-完全退出并重新打开 Edge 后生效。该方式只解决浏览器安全来源判定，音频仍通过未加密的 HTTP/WS 传输，只适合作为受控局域网临时方案；正式共享仍应放通 8443 并使用可信 HTTPS。恢复默认安全策略：
-
-```powershell
-Remove-Item 'HKCU:\Software\Policies\Microsoft\Edge\OverrideSecurityRestrictionsOnInsecureOrigin' -Recurse
-```
-
-策略说明见 [Microsoft Edge 官方文档](https://learn.microsoft.com/deployedge/microsoft-edge-policies/overridesecurityrestrictionsoninsecureorigin)。
-
-### 外层 HTTPS 反向代理（可选）
-
-若已有校园 CA 与反向代理，也可以不使用内置 8443，而由外层入口提供可信 HTTPS。反向代理必须允许 `/agent/asr/ws` WebSocket Upgrade，并保留浏览器看到的完整主机、端口和协议：
-
-反向代理还应保留浏览器看到的完整主机、端口和协议；否则 WebSocket 的同源校验无法判断真实来源：
+当前生产环境由现有反向代理在 `1234` 提供 HTTPS，并把 `/agent/` 转发给内部 `8501` 网关，不使用备用 `8443`。反向代理必须允许 `/agent/asr/ws` WebSocket Upgrade，并保留浏览器看到的完整主机、端口和协议；否则 WebSocket 的同源校验无法判断真实来源：
 
 ```nginx
 proxy_http_version 1.1;
@@ -247,7 +245,7 @@ proxy_read_timeout 3600s;
 外层反代方式的服务链路为：
 
 ```text
-https://公开入口/agent/asr/ws
+https://192.168.222.147:1234/agent/asr/ws
   → 现有反向代理去掉 /agent
   → 8501 用户级网关去掉 /asr
   → ws://127.0.0.1:8604/ws
@@ -258,8 +256,7 @@ https://公开入口/agent/asr/ws
 ```bash
 curl http://127.0.0.1:8604/health
 curl http://127.0.0.1:8501/asr/health
-curl --cacert config/tls/physics-assistant-ca.crt \
-  https://192.168.222.147:8443/agent/asr/health
+curl --insecure https://192.168.222.147:1234/agent/asr/health
 ss -lnt | grep 8604                 # 必须只看到 127.0.0.1
 tail -n 100 .runtime/logs/asr.log
 ```
@@ -282,7 +279,7 @@ PDF 解析需要系统提供 `pdftotext`；DOCX/PPTX 原生解析。旧 `.doc/.p
 
 ## 局域网访问
 
-应用默认通过 8501 提供 HTTP 兼容入口；执行 `setup_https.sh` 后还通过 8443 提供 HTTPS/WSS。管理员、ASR 和实验网页均由同源路径代理，内部端口无需对外开放。安装器不会修改系统防火墙或网络 ACL；需要局域网语音时只放行统一 HTTPS 入口，不要放行 8502、8603、8604 或实验内部端口。
+当前校园访问只使用 `https://192.168.222.147:1234/agent/`。`8501` 是服务器内部反向代理上游，`8443` 是未向校园网络开放的备用入口；管理员、ASR 和实验网页均由 `/agent/...` 同源路径代理。安装器不会修改系统防火墙或网络 ACL，不要向校园网络开放 8501、8443、8502、8603、8604 或实验内部端口。
 
 ## 便携性检查
 
@@ -296,7 +293,7 @@ Windows 外层项目提供 `check_portable_paths.py`，已确认源码、配置�
 agent_of_college_physics/
 ├─ install.sh                 # 唯一安装入口，普通用户执行
 ├─ manage.sh                  # 用户级服务管理
-├─ setup_https.sh             # 用户目录级 HTTPS/WSS 与项目 CA
+├─ setup_https.sh             # 备用 8443 HTTPS/WSS 与项目 CA（当前校园网络未开放）
 ├─ requirements.in
 ├─ requirements.lock
 ├─ physics-assistant.env.example
