@@ -63,6 +63,7 @@ def init_db() -> None:
                 images_json TEXT NOT NULL DEFAULT '[]',
                 visualizations_json TEXT NOT NULL DEFAULT '[]',
                 interaction_id INTEGER,
+                parent_message_id INTEGER,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
             );
@@ -87,6 +88,12 @@ def init_db() -> None:
         message_columns = {row["name"] for row in connection.execute("PRAGMA table_info(messages)")}
         if "interaction_id" not in message_columns:
             connection.execute("ALTER TABLE messages ADD COLUMN interaction_id INTEGER")
+        if "parent_message_id" not in message_columns:
+            connection.execute("ALTER TABLE messages ADD COLUMN parent_message_id INTEGER")
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_messages_parent_id "
+            "ON messages(user_id, parent_message_id)"
+        )
 
 
 def _password_hash(password: str, salt: bytes) -> str:
@@ -167,8 +174,11 @@ def save_message(user_id: int, message: dict) -> int:
     with _connect() as connection:
         cursor = connection.execute(
             """
-            INSERT INTO messages(user_id, role, content, images_json, visualizations_json, interaction_id)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO messages(
+                user_id, role, content, images_json, visualizations_json,
+                interaction_id, parent_message_id
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 user_id,
@@ -177,6 +187,7 @@ def save_message(user_id: int, message: dict) -> int:
                 _serialize_images(message.get("images", [])),
                 json.dumps(message.get("visualizations", []), ensure_ascii=False),
                 message.get("interaction_id"),
+                message.get("parent_message_id"),
             ),
         )
         message_id = int(cursor.lastrowid)
@@ -187,7 +198,8 @@ def load_messages(user_id: int, include_image_data: bool = True) -> list[dict]:
     with _connect() as connection:
         rows = connection.execute(
             """
-            SELECT id, role, content, images_json, visualizations_json, interaction_id, created_at
+            SELECT id, role, content, images_json, visualizations_json,
+                   interaction_id, parent_message_id, created_at
             FROM messages WHERE user_id = ? ORDER BY id
             """,
             (user_id,),
@@ -200,6 +212,7 @@ def load_messages(user_id: int, include_image_data: bool = True) -> list[dict]:
             "images": _deserialize_images(row["images_json"], include_image_data),
             "visualizations": json.loads(row["visualizations_json"] or "[]"),
             "interaction_id": row["interaction_id"],
+            "parent_message_id": row["parent_message_id"],
             "created_at": row["created_at"],
         }
         for row in rows
@@ -223,7 +236,8 @@ def load_messages_page(
     with _connect() as connection:
         rows = connection.execute(
             f"""
-            SELECT id, role, content, visualizations_json, interaction_id, created_at,
+            SELECT id, role, content, visualizations_json, interaction_id,
+                   parent_message_id, created_at,
                    CASE WHEN COALESCE(TRIM(images_json), '[]') <> '[]'
                         THEN 1 ELSE 0 END AS has_images
             FROM messages
@@ -244,6 +258,7 @@ def load_messages_page(
             "_has_images": bool(row["has_images"]),
             "visualizations": json.loads(row["visualizations_json"] or "[]"),
             "interaction_id": row["interaction_id"],
+            "parent_message_id": row["parent_message_id"],
             "created_at": row["created_at"],
         }
         for row in reversed(selected)
@@ -304,6 +319,117 @@ def delete_message(user_id: int, message_id: int) -> bool:
             (message_id, user_id),
         )
         return cursor.rowcount > 0
+
+
+def delete_unanswered_question(user_id: int, question_message_id: int) -> bool:
+    """Delete one user question only when no stored answer belongs to it."""
+    user_id = int(user_id)
+    question_message_id = int(question_message_id)
+    if user_id <= 0 or question_message_id <= 0:
+        return False
+
+    with _connect() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        question = connection.execute(
+            "SELECT id, role FROM messages WHERE id = ? AND user_id = ?",
+            (question_message_id, user_id),
+        ).fetchone()
+        if question is None or question["role"] != "user":
+            return False
+
+        linked_answer = connection.execute(
+            """
+            SELECT 1 FROM messages
+            WHERE user_id = ? AND role = 'assistant' AND parent_message_id = ?
+            LIMIT 1
+            """,
+            (user_id, question_message_id),
+        ).fetchone()
+        if linked_answer is not None:
+            return False
+
+        # Legacy answers may not have parent_message_id. Treat the immediately
+        # following unlinked assistant row as this question's answer.
+        next_message = connection.execute(
+            """
+            SELECT role, parent_message_id FROM messages
+            WHERE user_id = ? AND id > ?
+            ORDER BY id ASC
+            LIMIT 1
+            """,
+            (user_id, question_message_id),
+        ).fetchone()
+        if (
+            next_message is not None
+            and next_message["role"] == "assistant"
+            and next_message["parent_message_id"] is None
+        ):
+            return False
+
+        cursor = connection.execute(
+            "DELETE FROM messages WHERE id = ? AND user_id = ? AND role = 'user'",
+            (question_message_id, user_id),
+        )
+        return cursor.rowcount == 1
+
+
+def delete_answer_turn(user_id: int, assistant_message_id: int) -> tuple[int, ...]:
+    """Delete an answer and its explicitly linked question as one history turn.
+
+    The ownership and role checks are performed inside the same write transaction.
+    Returning the deleted database IDs lets the UI remove exactly the same messages
+    from its paged in-memory view. Legacy rows without an explicit link fall back to
+    the immediately preceding message for the same user.
+    """
+    user_id = int(user_id)
+    assistant_message_id = int(assistant_message_id)
+    if user_id <= 0 or assistant_message_id <= 0:
+        return ()
+
+    with _connect() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        answer = connection.execute(
+            "SELECT id, role, parent_message_id FROM messages WHERE id = ? AND user_id = ?",
+            (assistant_message_id, user_id),
+        ).fetchone()
+        if answer is None or answer["role"] != "assistant":
+            return ()
+
+        previous = None
+        if answer["parent_message_id"] is not None:
+            previous = connection.execute(
+                """
+                SELECT id, role
+                FROM messages
+                WHERE id = ? AND user_id = ? AND id < ?
+                """,
+                (int(answer["parent_message_id"]), user_id, assistant_message_id),
+            ).fetchone()
+        else:
+            # Legacy rows predate explicit pairing. Their best recoverable link is
+            # the immediately preceding message belonging to the same user.
+            previous = connection.execute(
+                """
+                SELECT id, role
+                FROM messages
+                WHERE user_id = ? AND id < ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (user_id, assistant_message_id),
+            ).fetchone()
+        deleted_ids = [assistant_message_id]
+        if previous is not None and previous["role"] == "user":
+            deleted_ids.insert(0, int(previous["id"]))
+
+        placeholders = ",".join("?" for _ in deleted_ids)
+        cursor = connection.execute(
+            f"DELETE FROM messages WHERE user_id = ? AND id IN ({placeholders})",
+            (user_id, *deleted_ids),
+        )
+        if cursor.rowcount != len(deleted_ids):
+            raise RuntimeError("对话轮次删除不完整，事务已回滚。")
+        return tuple(deleted_ids)
 
 
 def clear_messages(user_id: int) -> None:

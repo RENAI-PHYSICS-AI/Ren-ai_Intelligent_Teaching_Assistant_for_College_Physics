@@ -195,6 +195,7 @@ def _ensure_configured_admin() -> None:
     db.ensure_admin_user(_load_admin_username(), password, display_name or "课程管理员")
 
 
+db.init_db()
 _ensure_configured_admin()
 
 
@@ -252,6 +253,7 @@ def _analytics_payload(recent_error_limit: int = 15) -> dict:
             "recent": db.get_recent_errors(recent_error_limit),
         },
         "unanswered": db.get_unanswered_questions(),
+        "response_timings": db.get_recent_response_timings(),
     }
 
 
@@ -337,6 +339,12 @@ def _analytics_login_page(auto_load: bool = False, public_prefix: str = "") -> s
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;")
         .replaceAll("'", "&#039;");
+    }
+
+    function formatDuration(value) {
+      const ms = Number(value);
+      if (!Number.isFinite(ms)) return "—";
+      return ms < 1000 ? `${ms.toFixed(1)} ms` : `${(ms / 1000).toFixed(ms >= 10000 ? 1 : 3)} s`;
     }
 
     async function importRoster() {
@@ -499,6 +507,21 @@ def _analytics_login_page(auto_load: bool = False, public_prefix: str = "") -> s
       const attentionRules = (learning.attention_rules || []).length
         ? "<ul class='rules'>" + learning.attention_rules.map(rule => `<li>${escapeHtml(rule)}</li>`).join("") + "</ul>"
         : "<p class='muted'>暂无规则</p>";
+      const timingRows = (data.response_timings || []).length ? data.response_timings.map(row => {
+        const timings = row.timings || {};
+        return `<tr>
+          <td>${escapeHtml(String(row.timestamp || "").slice(0, 19))}</td>
+          <td>${escapeHtml(row.display_name || row.username || "匿名用户")}</td>
+          <td>${escapeHtml(String(row.question || "").slice(0, 80))}</td>
+          <td>${formatDuration(timings["检索耗时"])}</td>
+          <td>${formatDuration(timings["上下文拼装耗时"])}</td>
+          <td>${formatDuration(timings["联网检索耗时"])}</td>
+          <td>${formatDuration(timings["历史加载耗时"])}</td>
+          <td>${formatDuration(timings["模型首片段耗时"])}</td>
+          <td>${formatDuration(timings["模型流式总耗时"])}</td>
+          <td>${formatDuration(timings["端到端耗时"] ?? row.response_time_ms)}</td>
+        </tr>`;
+      }).join("") : `<tr><td colspan="10" class="muted">暂无分阶段耗时记录，新问答完成后会自动记录。</td></tr>`;
       const rosterList = itemList(roster.list, row => {
         const typeName = row.identity_type === "student" ? "学生" : "教师";
         const idName = row.identity_type === "student" ? "学号" : "工号";
@@ -517,6 +540,14 @@ def _analytics_login_page(auto_load: bool = False, public_prefix: str = "") -> s
           <div class="card"><div class="muted">登录次数</div><div class="metric">${users.total_logins ?? 0}</div></div>
         </div>
         <p class="section-note"><b>统计口径：</b>总览包含注册用户与匿名用户。问答请求失败率 = 最终未能正常完成且记录了异常的问答数 ÷ 总提问数 × 100%。它反映模型接口、网络、视觉识别或服务异常，不判断答案在知识上是否正确；用户差评单独统计，Python 代码与可视化运行错误列入下方“系统运行错误日志”。</p>
+        <h2 class="section-title">响应耗时分析</h2>
+        <p class="section-note">仅管理员可见，展示最近 30 次新问答的知识库、历史记录和模型生成各阶段耗时。</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>时间</th><th>用户</th><th>问题</th><th>知识检索</th><th>上下文</th><th>联网检索</th><th>历史加载</th><th>首段答案</th><th>模型总计</th><th>端到端</th></tr></thead>
+            <tbody>${timingRows}</tbody>
+          </table>
+        </div>
         <h2 class="section-title">身份名册</h2>
         <p class="section-note">身份绑定为可选功能。用户填写学生或教师身份时，类型、学号或工号、姓名必须与名册匹配；每个编号只能绑定一个账号。</p>
         <div class="grid">

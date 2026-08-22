@@ -28,6 +28,16 @@ if [[ "$PHYSICS_ASR_MODEL_DIR" != /* ]]; then
 fi
 export PHYSICS_ASR_PORT="${PHYSICS_ASR_PORT:-8604}"
 export PHYSICS_ASR_UPSTREAM="http://127.0.0.1:$PHYSICS_ASR_PORT"
+export PHYSICS_CHAT_MODEL_KEY="${PHYSICS_CHAT_MODEL_KEY:-zai-org/glm-4.7-flash}"
+export PHYSICS_CHAT_MODEL_IDENTIFIER="${PHYSICS_CHAT_MODEL_IDENTIFIER:-glm47-local-prod}"
+export PHYSICS_CHAT_MODEL_CONTEXT="${PHYSICS_CHAT_MODEL_CONTEXT:-8192}"
+export PHYSICS_CHAT_MODEL_PARALLEL="${PHYSICS_CHAT_MODEL_PARALLEL:-4}"
+export PHYSICS_VISION_MODEL_KEY="${PHYSICS_VISION_MODEL_KEY:-qwen/qwen3-vl-30b}"
+export PHYSICS_VISION_MODEL_IDENTIFIER="${PHYSICS_VISION_MODEL_IDENTIFIER:-qwen-vl30-local-prod}"
+export PHYSICS_VISION_MODEL_CONTEXT="${PHYSICS_VISION_MODEL_CONTEXT:-8192}"
+export PHYSICS_VISION_MODEL_PARALLEL="${PHYSICS_VISION_MODEL_PARALLEL:-4}"
+export PHYSICS_MODEL="${PHYSICS_MODEL:-$PHYSICS_CHAT_MODEL_IDENTIFIER}"
+export PHYSICS_VISION_MODEL="${PHYSICS_VISION_MODEL:-$PHYSICS_VISION_MODEL_IDENTIFIER}"
 export PHYSICS_GATEWAY_HTTPS_PORT="${PHYSICS_GATEWAY_HTTPS_PORT:-}"
 export PHYSICS_GATEWAY_TLS_CERT="${PHYSICS_GATEWAY_TLS_CERT:-$APP_ROOT/config/tls/server.crt}"
 export PHYSICS_GATEWAY_TLS_KEY="${PHYSICS_GATEWAY_TLS_KEY:-$APP_ROOT/config/tls/server.key}"
@@ -87,8 +97,90 @@ wait_https_url() {
   return 1
 }
 
+local_llm_loaded() {
+  local lms_bin="$1" identifier="$2" model_key="$3" context="$4" parallel="$5" models_json
+  models_json="$("$lms_bin" ps --json 2>/dev/null)" || return 1
+  MODELS_JSON="$models_json" "$PYTHON" -c '
+import json
+import os
+import sys
+
+models = json.loads(os.environ.get("MODELS_JSON", "[]"))
+identifier, model_key, context, parallel = sys.argv[1:]
+matched = any(
+    item.get("identifier") == identifier
+    and item.get("modelKey") == model_key
+    and item.get("deviceIdentifier") is None
+    and int(item.get("contextLength") or 0) == int(context)
+    and int(item.get("parallel") or 0) == int(parallel)
+    for item in models
+)
+raise SystemExit(0 if matched else 1)
+' "$identifier" "$model_key" "$context" "$parallel"
+}
+
+ensure_one_local_llm() {
+  local lms_bin="$1" label="$2" model_key="$3" identifier="$4" context="$5" parallel="$6"
+  if ! local_llm_loaded "$lms_bin" "$identifier" "$model_key" "$context" "$parallel"; then
+    "$lms_bin" unload "$identifier" >/dev/null 2>&1 || true
+    "$lms_bin" unload "$model_key" >/dev/null 2>&1 || true
+    "$lms_bin" load "$model_key" \
+      --identifier "$identifier" \
+      --gpu off \
+      --context-length "$context" \
+      --parallel "$parallel" \
+      --no-speculative-draft-mtp \
+      --yes
+  fi
+  local_llm_loaded "$lms_bin" "$identifier" "$model_key" "$context" "$parallel" || {
+    "$lms_bin" unload "$identifier" >/dev/null 2>&1 || true
+    echo "$label 校验失败：模型未按指定配置加载在 tjracphy。" >&2
+    return 1
+  }
+  echo "$label 已常驻（$identifier，无 TTL）"
+}
+
+ensure_local_llms() {
+  local lms_bin="${PHYSICS_LMS_BIN:-}"
+  [[ "$PHYSICS_MODEL" == "$PHYSICS_CHAT_MODEL_IDENTIFIER" ]] || {
+    echo "PHYSICS_MODEL 必须等于 $PHYSICS_CHAT_MODEL_IDENTIFIER" >&2
+    return 1
+  }
+  [[ "$PHYSICS_VISION_MODEL" == "$PHYSICS_VISION_MODEL_IDENTIFIER" ]] || {
+    echo "PHYSICS_VISION_MODEL 必须等于 $PHYSICS_VISION_MODEL_IDENTIFIER" >&2
+    return 1
+  }
+  [[ "${PHYSICS_BASE_URL:-}" == "http://127.0.0.1:1235/v1" ]] || {
+    echo "本机模型必须使用 PHYSICS_BASE_URL=http://127.0.0.1:1235/v1" >&2
+    return 1
+  }
+  if [[ -z "$lms_bin" ]]; then
+    if [[ -x "$HOME/.lmstudio/bin/lms" ]]; then
+      lms_bin="$HOME/.lmstudio/bin/lms"
+    elif command -v lms >/dev/null 2>&1; then
+      lms_bin="$(command -v lms)"
+    else
+      echo "未找到 lms，无法加载本机对话与图片模型。" >&2
+      return 1
+    fi
+  fi
+
+  "$lms_bin" daemon up >/dev/null 2>&1 || true
+  if ! curl --fail --silent http://127.0.0.1:1235/v1/models >/dev/null 2>&1; then
+    "$lms_bin" server start --port 1235 --bind 127.0.0.1 >/dev/null
+    wait_url http://127.0.0.1:1235/v1/models "LM Studio 本机接口"
+  fi
+  ensure_one_local_llm "$lms_bin" "本机 GLM-4.7-Flash 对话模型" \
+    "$PHYSICS_CHAT_MODEL_KEY" "$PHYSICS_CHAT_MODEL_IDENTIFIER" \
+    "$PHYSICS_CHAT_MODEL_CONTEXT" "$PHYSICS_CHAT_MODEL_PARALLEL"
+  ensure_one_local_llm "$lms_bin" "本机 Qwen3-VL-30B 图片模型" \
+    "$PHYSICS_VISION_MODEL_KEY" "$PHYSICS_VISION_MODEL_IDENTIFIER" \
+    "$PHYSICS_VISION_MODEL_CONTEXT" "$PHYSICS_VISION_MODEL_PARALLEL"
+}
+
 start_all() {
   [[ -x "$PYTHON" ]] || { echo "尚未安装，请先执行 bash install.sh" >&2; return 1; }
+  ensure_local_llms
   start_one admin "$PYTHON" -m uvicorn admin_api:app \
     --host 127.0.0.1 --port 8603 --proxy-headers --forwarded-allow-ips=127.0.0.1
   start_one asr "$PYTHON" -m uvicorn asr_service:app \

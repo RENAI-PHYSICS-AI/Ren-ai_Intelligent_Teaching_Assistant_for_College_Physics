@@ -2,7 +2,9 @@
 
 本目录是一套与 Windows 版独立的、可直接复制的 Rocky Linux 10 版本。应用、原始教学素材、RAG 知识库、迁移的用户/管理员/历史数据和两套可视化实验都在这里。
 
-回答以本地教材和 RAG 知识库为核心，同时由配置的模型服务检索网络内容进行补充。应用自身不运行独立网页爬虫；教材课程口径与网络资料不一致时以教材为准。该策略固定启用，不提供用户开关。
+回答以本地教材和 RAG 知识库为核心；遇到明确联网请求或时效性问题时，应用按需调用 Tavily 检索网络资料，再由本地模型统一组织答案。教材课程口径与网络资料不一致时以教材为准。
+
+本版本已在学校服务器部署运行。校内访问地址：[https://192.168.222.147:1234/agent/](https://192.168.222.147:1234/agent/)
 
 安装不需要也不允许 `sudo`，不会写入 `/opt`、`/etc`、`/var`、`/usr/local`，不会创建系统用户，也不会修改 Nginx、systemd、firewalld 或 SELinux。Python、Julia、配置、日志和 PID 文件都保存在复制后的当前目录。
 
@@ -13,7 +15,7 @@
 - 原始教学素材 668 个文件；
 - RAG 主知识库 50,142 个文本块；
 - Windows 端现有用户、管理员、对话、反馈、学情与身份名册；
-- 注册用户与匿名会话都支持逐条确认删除回答，注册用户的删除会同步写入数据库；
+- 注册用户与匿名会话都支持逐条确认删除完整问答；只有问题而没有回答的孤立条目也可单独删除，注册用户的删除会同步写入数据库；
 - 数据库备份和管理员签名密钥；
 - 李萨如图形与声速测量实验。
 - Paraformer 中文流式语音输入服务及固定版本模型下载器。
@@ -34,7 +36,7 @@
             └─ /experiments/sound-speed → 本机声速实验
 ```
 
-所有实际后端服务只监听本机；8501 与可选的 8443 只负责同源代理。服务器纯 CPU 可用，实验图形由访问者浏览器的 WebGL2 渲染。
+所有实际后端服务只监听本机；8501 与可选的 8443 只负责同源代理。实验图形由访问者浏览器的 WebGL2 渲染。
 
 ## 环境要求
 
@@ -44,7 +46,7 @@
 - 用户目录至少预留 8 GB 空间；
 - 系统已有 `curl`、`tar`、`gzip`、`sha256sum`、`awk`；启用项目 HTTPS 时还需要 `openssl`；
 - 安装阶段能访问 uv、Python 包源、Julia 官方下载站、GitHub 的 Noto CJK 字体源和 Hugging Face 模型仓库；
-- 能访问模型服务 `http://192.168.222.147:1234/v1`。
+- 本机已安装 LM Studio CLI；`manage.sh` 会自动检查并常驻加载 `glm47-local-prod` 与 `qwen-vl30-local-prod`。
 
 系统缺少基础命令时，安装器只报告缺项，不会自行调用 dnf 或修改系统。
 
@@ -118,8 +120,20 @@ bash manage.sh restart
 默认配置：
 
 ```ini
-PHYSICS_BASE_URL=http://192.168.222.147:1234/v1
-PHYSICS_MODEL=qwen/qwen3.6-27b
+PHYSICS_BASE_URL=http://127.0.0.1:1235/v1
+PHYSICS_MODEL=glm47-local-prod
+PHYSICS_VISION_MODEL=qwen-vl30-local-prod
+PHYSICS_CONTEXT_WINDOW=8192
+PHYSICS_HISTORY_MAX_MESSAGES=4
+PHYSICS_MAX_OUTPUT_TOKENS=1024
+KB_CONTEXT_MAX_CHARS=2500
+PHYSICS_VISION_MAX_OUTPUT_TOKENS=1024
+PHYSICS_CHAT_MODEL_KEY=zai-org/glm-4.7-flash
+PHYSICS_CHAT_MODEL_IDENTIFIER=glm47-local-prod
+PHYSICS_VISION_MODEL_KEY=qwen/qwen3-vl-30b
+PHYSICS_VISION_MODEL_IDENTIFIER=qwen-vl30-local-prod
+PHYSICS_CHAT_NO_THINK_SUFFIX=/nothink
+PHYSICS_VISION_NO_THINK_SUFFIX=/no_think
 PHYSICS_API_KEY=
 ADMIN_LOGIN_URL=/admin-login
 PHYSICS_PUBLIC_BASE_URL=http://192.168.222.147:1234/agent
@@ -133,7 +147,9 @@ PHYSICS_ASR_IDLE_TIMEOUT_SECONDS=20
 PHYSICS_ASR_ALLOW_MISSING_ORIGIN=0
 ```
 
-当前对话与图片识别统一使用 LM Link 设备 `tianwen` 上的 `qwen/qwen3.6-27b`；API 入口根据模型 ID 自动路由到该设备。
+当前对话和最终答案使用学校 Rocky 服务器 `tjracphy` 本机的 GLM-4.7-Flash，生产 API 标识为 `glm47-local-prod`；图片先由本机 Qwen3-VL-30B-A3B-Instruct 识别，生产 API 标识为 `qwen-vl30-local-prod`，识别文本再交给 GLM 结合知识库组织答案。`manage.sh start/restart` 会检查两个模型的本机设备标识、8K 上下文和4个并行槽；缺少时自动加载，加载命令不设置 TTL，因此空闲时不会自动卸载。服务器或 LM Studio 重启后再次执行 `bash manage.sh start` 即可恢复双模型常驻。
+
+当前 Rocky 与 Windows 版本均已配置并启用 Tavily Search API 联网补充。普通教材概念、公式推导和计算题不会联网；问题明确要求联网，或包含“最新、近期、目前、进展、现行标准”等时效性表达时才触发。应用只发送当前问题文本，不发送用户身份、历史记录或图片。结果经过清洗后作为不可信参考交给 GLM，并在答案末尾附真实来源链接；搜索失败会自动退回本地知识库，相同问题默认缓存 30 分钟。Rocky 密钥保存在 `config/physics-assistant.env`，Windows 密钥保存在 `.streamlit/secrets.toml`，两者都不得提交到 Git。
 
 Python 网关使管理员与学生端继续共用 8501。直接访问 8501 时可将
 `PHYSICS_PUBLIC_BASE_URL` 留空；若通过子路径反向代理，必须填写浏览器实际看到的
@@ -147,7 +163,7 @@ http://192.168.222.147:1234/agent/
 
 ## Paraformer 流式语音输入
 
-语音后端使用 `sherpa-onnx 1.13.4` 与中英双语 `Paraformer-zh-streaming` INT8，全部在 CPU 上运行。麦克风按钮位于输入框内部、发送按钮左侧。浏览器通过 AudioWorklet 采集麦克风，将音频连续重采样为 16 kHz Float32 PCM；中间结果显示在输入框上方浮层中，再次点按麦克风后把最终文字写入草稿，不会自动发送。模型不提供词级时间戳，Sherpa 的在线 Paraformer API 也没有真正的热词偏置。
+语音后端使用 `sherpa-onnx 1.13.4` 与中英双语 `Paraformer-zh-streaming` INT8，并作为本地独立服务运行。麦克风按钮位于输入框内部、发送按钮左侧。浏览器通过 AudioWorklet 采集麦克风，将音频连续重采样为 16 kHz Float32 PCM；中间结果显示在输入框上方浮层中，再次点按麦克风后把最终文字写入草稿，不会自动发送。模型不提供词级时间戳，Sherpa 的在线 Paraformer API 也没有真正的热词偏置。
 
 浏览器安全策略要求非 `localhost` 麦克风页面使用可信 HTTPS。当前公开入口 `http://192.168.222.147:1234/agent/` 可以正常问答，但普通 Edge/Chrome 会拒绝麦克风。本项目提供不需要 sudo 的用户级 HTTPS/WSS 网关：
 
@@ -179,7 +195,7 @@ Get-ChildItem Cert:\CurrentUser\Root |
   Remove-Item
 ```
 
-8443 HTTPS 前端与服务器端调用的 `http://192.168.222.147:1234/v1` 模型 API 可以并存。不要对整台主机启用 HSTS，也不要把 1234 全局重定向到 HTTPS，否则会破坏现有模型 API。
+浏览器统一通过 `https://192.168.222.147:1234/agent/` 访问；Rocky 应用在服务器内部通过 `http://127.0.0.1:1235/v1` 调用本机模型，不受外部 HTTPS 入口影响。
 
 ### 网络暂时只放行 HTTP 时的 Edge 兼容方式
 
@@ -250,6 +266,8 @@ tail -n 100 .runtime/logs/asr.log
 
 ## 知识库
 
+每次新问答的分阶段响应耗时仅在管理员页面显示，学生界面不展示开发联调数据；管理员可查看最近 30 次问答的知识检索、上下文拼装、历史加载、首段答案、模型生成和端到端耗时。
+
 ### 检索性能
 
 本地 BM25 检索使用倒排索引和预缓存词频。查询时只计算包含查询词的候选文本块，并使用 Top-K 堆排序，避免每次扫描全部知识块。首次加载会读取 JSONL 并建立索引，之后由服务进程缓存复用；知识库更新后重启应用即可刷新索引。
@@ -269,6 +287,8 @@ PDF 解析需要系统提供 `pdftotext`；DOCX/PPTX 原生解析。旧 `.doc/.p
 ## 便携性检查
 
 Windows 外层项目提供 `check_portable_paths.py`，已确认源码、配置、知识库字段和所有 SQLite 数据库中没有写死 `C:`、`D:`、`E:` 等盘符路径。
+
+本目录可整体复制到任意普通用户目录并改名。安装、管理和 HTTPS 脚本均按自身位置确定项目根目录；证书配置写为 `config/tls/...` 相对路径，搬迁后由 `manage.sh` 解析为当前项目中的实际位置。
 
 ## 文件结构
 

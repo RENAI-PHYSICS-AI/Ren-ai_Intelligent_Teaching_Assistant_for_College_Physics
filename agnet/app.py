@@ -22,7 +22,8 @@ from storage import (
     authenticate,
     clear_messages,
     create_user,
-    delete_message,
+    delete_answer_turn,
+    delete_unanswered_question,
     init_db,
     load_context_messages,
     load_message_images,
@@ -33,6 +34,7 @@ from storage import (
 )
 from visualization import apply_requested_media_format, extract_visualizations, render_visualizations
 from voice_input import render_voice_input
+from web_search import append_web_sources, search_web, should_search_web, web_context_text
 
 st.set_page_config(page_title="大学物理智能助教", page_icon="⚛️", layout="wide", initial_sidebar_state="expanded")
 
@@ -169,6 +171,11 @@ def new_quick_questions() -> list[str]:
 def normalize_latex(text: str) -> str:
     """Convert model-style TeX delimiters to Streamlit's reliable dollar syntax."""
     text = re.sub(r"\s*\[资料\s*\d+\]", "", text)
+    text = re.sub(
+        r"(?:结合|根据)您提供的(?:教材)?资料(?:（[^）]*）)?(?:以及课堂讨论内容)?",
+        "依据知识库",
+        text,
+    )
     text = text.replace(r"\[", "\n$$\n").replace(r"\]", "\n$$\n")
     text = text.replace(r"\(", "$").replace(r"\)", "$")
     # Keep display delimiters on their own lines so Markdown cannot treat them as text.
@@ -176,12 +183,12 @@ def normalize_latex(text: str) -> str:
     return text
 
 
-@st.cache_resource
+@st.cache_resource(show_spinner=False)
 def load_kb(stamp: float):
     return KnowledgeBase(KB_FILE)
 
 
-@st.cache_resource
+@st.cache_resource(show_spinner=False)
 def initialize_storage():
     init_db()
     analytics_db.init_db()
@@ -219,7 +226,6 @@ if "_analytics_last_touch" not in st.session_state:
     st.session_state._analytics_last_touch = 0.0
 if "_voice_commit_id" not in st.session_state:
     st.session_state._voice_commit_id = None
-
 HISTORY_PAGE_SIZE = 8
 
 
@@ -297,6 +303,18 @@ def message_ui_key(message: dict) -> str:
         ui_id = uuid.uuid4().hex
         message["_ui_id"] = ui_id
     return f"session_{ui_id}"
+
+
+def save_session_history(user_id: int) -> None:
+    """Persist an anonymous in-memory history while preserving turn links."""
+    latest_user_message_id: int | None = None
+    for existing_message in st.session_state.messages:
+        if existing_message.get("role") == "user":
+            existing_message["id"] = save_message(user_id, existing_message)
+            latest_user_message_id = int(existing_message["id"])
+            continue
+        existing_message["parent_message_id"] = latest_user_message_id
+        existing_message["id"] = save_message(user_id, existing_message)
 
 
 def clear_history_render_state() -> None:
@@ -394,54 +412,105 @@ def render_history_visualizations(message: dict) -> None:
         st.rerun()
 
 
-def delete_history_answer(message_index: int, message: dict) -> None:
+def delete_history_turn(message_index: int, message: dict) -> None:
     if st.session_state.get("_answer_in_progress"):
         st.session_state._history_notice = "回答生成期间暂不能删除历史记录。"
         st.rerun()
 
     user_id = st.session_state.user_id
+    deleted_messages: list[dict] = []
+    deleted_count = 0
     if user_id is not None:
         message_id = message.get("id")
         if message_id is None:
             load_initial_history(user_id)
-            st.session_state._history_notice = "历史记录已刷新，请再次选择要删除的回答。"
+            st.session_state._history_notice = "历史记录已刷新，请再次选择要删除的条目。"
             st.rerun()
         try:
-            removed = delete_message(user_id, int(message_id))
+            if message.get("role") == "user":
+                deleted_ids = (
+                    {int(message_id)}
+                    if delete_unanswered_question(user_id, int(message_id))
+                    else set()
+                )
+            else:
+                deleted_ids = set(delete_answer_turn(user_id, int(message_id)))
         except Exception:
-            st.session_state._history_notice = "删除失败，请稍后重试。"
+            st.session_state._history_notice = "删除历史记录失败，请稍后重试。"
             st.rerun()
-        if not removed:
+        if not deleted_ids:
             load_initial_history(user_id)
-            st.session_state._history_notice = "该回答已不存在，历史记录已刷新。"
+            st.session_state._history_notice = "该条目已不存在或已经有回答，历史记录已刷新。"
             st.rerun()
+        deleted_count = len(deleted_ids)
+        deleted_messages = [
+            item
+            for item in st.session_state.messages
+            if item.get("id") is not None and int(item["id"]) in deleted_ids
+        ]
         st.session_state.messages = [
             item
             for item in st.session_state.messages
-            if item.get("id") is None or int(item["id"]) != int(message_id)
+            if item.get("id") is None or int(item["id"]) not in deleted_ids
         ]
         if not st.session_state.messages and st.session_state._history_has_more:
             load_initial_history(user_id)
     elif 0 <= message_index < len(st.session_state.messages):
-        del st.session_state.messages[message_index]
+        first_index = message_index
+        if (
+            message.get("role") == "assistant"
+            and message_index > 0
+            and st.session_state.messages[message_index - 1].get("role") == "user"
+        ):
+            first_index -= 1
+        deleted_messages = st.session_state.messages[first_index : message_index + 1]
+        deleted_count = len(deleted_messages)
+        del st.session_state.messages[first_index : message_index + 1]
     st.session_state.pop("_pending_delete_message", None)
-    stable_key = message_ui_key(message)
-    st.session_state.pop(f"_history_images_{stable_key}", None)
-    st.session_state.pop(f"_history_viz_open_{stable_key}", None)
-    st.session_state._history_notice = "已删除这条回答。"
+    for deleted_message in deleted_messages:
+        stable_key = message_ui_key(deleted_message)
+        st.session_state.pop(f"_history_images_{stable_key}", None)
+        st.session_state.pop(f"_history_viz_open_{stable_key}", None)
+    if message.get("role") == "user" and deleted_count == 1:
+        st.session_state._history_notice = "已删除未回答的问题。"
+    elif deleted_count >= 2:
+        st.session_state._history_notice = "已删除本轮问题和回答。"
+    else:
+        st.session_state._history_notice = "已删除回答；未找到可配对的问题。"
     st.rerun()
 
 
-def render_answer_delete(message: dict, message_index: int) -> None:
+def question_has_answer(message_index: int, message: dict) -> bool:
+    """Return whether a visible user message already has a paired answer."""
+    if message.get("role") != "user":
+        return False
+    message_id = message.get("id")
+    later_messages = st.session_state.messages[message_index + 1:]
+    if message_id is not None:
+        for candidate in later_messages:
+            if (
+                candidate.get("role") == "assistant"
+                and candidate.get("parent_message_id") is not None
+                and int(candidate["parent_message_id"]) == int(message_id)
+            ):
+                return True
+    if later_messages and later_messages[0].get("role") == "assistant":
+        return later_messages[0].get("parent_message_id") is None or message_id is None
+    return False
+
+
+def render_history_delete(message: dict, message_index: int) -> None:
     stable_key = message_ui_key(message)
     pending_key = st.session_state.get("_pending_delete_message")
     disabled = bool(st.session_state.get("_answer_in_progress"))
+    unanswered_question = message.get("role") == "user"
+    help_text = "删除这条未回答的问题" if unanswered_question else "删除本轮问题和回答"
     if pending_key != stable_key:
         _, delete_col = st.columns([8, 1.35])
         if delete_col.button(
             "🗑 删除",
-            key=f"delete_answer_{stable_key}",
-            help="删除这一条回答",
+            key=f"delete_history_{stable_key}",
+            help=help_text,
             use_container_width=True,
             disabled=disabled,
         ):
@@ -449,19 +518,22 @@ def render_answer_delete(message: dict, message_index: int) -> None:
             st.rerun()
         return
 
-    st.caption("确认删除这一条回答？删除后无法恢复。")
+    if unanswered_question:
+        st.caption("确认删除这条未回答的问题？删除后无法恢复。")
+    else:
+        st.caption("确认删除本轮问题和回答？删除后无法恢复。")
     _, confirm_col, cancel_col = st.columns([6, 1.45, 1.2])
     if confirm_col.button(
         "确认删除",
-        key=f"confirm_delete_answer_{stable_key}",
+        key=f"confirm_delete_history_{stable_key}",
         type="primary",
         use_container_width=True,
         disabled=disabled,
     ):
-        delete_history_answer(message_index, message)
+        delete_history_turn(message_index, message)
     if cancel_col.button(
         "取消",
-        key=f"cancel_delete_answer_{stable_key}",
+        key=f"cancel_delete_history_{stable_key}",
         use_container_width=True,
     ):
         st.session_state.pop("_pending_delete_message", None)
@@ -529,8 +601,7 @@ if not st.session_state.access_granted:
                     if user_id is None:
                         st.error(register_message)
                     else:
-                        for existing_message in st.session_state.messages:
-                            existing_message["id"] = save_message(user_id, existing_message)
+                        save_session_history(user_id)
                         load_initial_history(user_id)
                         st.session_state.user_id = user_id
                         st.session_state.username = landing_register_username.strip()
@@ -564,7 +635,22 @@ elif time.monotonic() - st.session_state._analytics_last_touch >= 60:
 
 quick_question = None
 chapter = "全部"
-top_k = 6
+try:
+    top_k = int(setting("RAG_TOP_K", "6"))
+except (TypeError, ValueError):
+    top_k = 6
+top_k = max(1, min(top_k, 12))
+
+try:
+    context_chars_limit = int(setting("KB_CONTEXT_MAX_CHARS", "2500"))
+except (TypeError, ValueError):
+    context_chars_limit = 2500
+context_chars_limit = max(800, min(context_chars_limit, 12000))
+try:
+    history_message_limit = int(setting("PHYSICS_HISTORY_MAX_MESSAGES", "4"))
+except (TypeError, ValueError):
+    history_message_limit = 4
+history_message_limit = max(2, min(history_message_limit, 200))
 with st.sidebar:
     st.markdown(
         """
@@ -645,8 +731,7 @@ with st.sidebar:
                             st.error(register_message)
                         else:
                             # Keep the conversation that was started anonymously.
-                            for existing_message in st.session_state.messages:
-                                existing_message["id"] = save_message(user_id, existing_message)
+                            save_session_history(user_id)
                             load_initial_history(user_id)
                             st.session_state.user_id = user_id
                             st.session_state.username = register_username.strip()
@@ -814,8 +899,8 @@ for message_index, message in enumerate(st.session_state.messages):
         render_history_images(message)
         st.markdown(normalize_latex(message["content"]))
         render_history_visualizations(message)
-        if message["role"] == "assistant":
-            render_answer_delete(message, message_index)
+        if message["role"] == "assistant" or not question_has_answer(message_index, message):
+            render_history_delete(message, message_index)
 
 if not st.session_state.messages:
     st.markdown("""
@@ -867,6 +952,7 @@ if uploaded_images and not typed_question:
 question = quick_question or typed_question
 if question:
     request_started = time.monotonic()
+    request_timing: dict[str, float] = {}
     request_error = None
     request_traceback = ""
     message_images = [] if quick_question else uploaded_images
@@ -878,15 +964,30 @@ if question:
         for image in message_images:
             st.image(image["data"], caption=image.get("name"), width=360)
         st.markdown(question)
+    search_started = time.monotonic()
     results = kb.search(question, chapter=chapter, top_k=top_k)
-    context = context_text(results)
+    request_timing["检索耗时"] = time.monotonic() - search_started
+    context_started = time.monotonic()
+    context = context_text(results, max_chars=context_chars_limit)
+    request_timing["上下文拼装耗时"] = time.monotonic() - context_started
+    web_results = []
+    web_context = ""
+    if should_search_web(question):
+        web_search_started = time.monotonic()
+        with st.spinner("正在联网检索补充资料……"):
+            web_results = search_web(question)
+        request_timing["联网检索耗时"] = time.monotonic() - web_search_started
+        web_context = web_context_text(web_results)
     if st.session_state.user_id is not None and user_message.get("id") is not None:
+        history_started = time.monotonic()
         history = load_context_messages(
             st.session_state.user_id,
             before_id=int(user_message["id"]),
-            limit=80,
+            limit=history_message_limit,
         )
+        request_timing["历史加载耗时"] = time.monotonic() - history_started
     else:
+        request_timing["历史加载耗时"] = 0.0
         history = [
             {"role": message["role"], "content": message["content"]}
             for message in st.session_state.messages[:-1]
@@ -895,7 +996,7 @@ if question:
         thinking = st.empty()
         thinking.markdown("""
         <div class="thinking-state"><span class="thinking-orb"></span>
-        <span>正在查阅本地知识并整合补充资料<span class="thinking-dots"><span>·</span><span>·</span><span>·</span></span></span></div>
+        <span>正在组织答案<span class="thinking-dots"><span>·</span><span>·</span><span>·</span></span></span></div>
         """, unsafe_allow_html=True)
         components.html("""
         <script>
@@ -942,12 +1043,16 @@ if question:
         streamed_parts = []
         answer_placeholder = st.empty()
         visualizations = []
+        model_start = time.monotonic()
 
         def tracked_stream():
             nonlocal_first = {"value": True}
-            for piece in stream_answer(question, context, history, message_images):
+            for piece in stream_answer(
+                question, context, history, message_images, web_context=web_context
+            ):
                 if nonlocal_first["value"]:
                     thinking.empty()
+                    request_timing["模型首片段耗时"] = time.monotonic() - model_start
                     nonlocal_first["value"] = False
                 streamed_parts.append(piece)
                 yield piece
@@ -965,6 +1070,7 @@ if question:
             thinking.empty()
             response = normalize_latex("".join(streamed_parts))
             response, visualizations = extract_visualizations(response)
+            response = append_web_sources(response, web_results)
             visualizations = apply_requested_media_format(visualizations, question)
             answer_placeholder.markdown(response)
             if not visualizations and visualization_requested(question):
@@ -981,6 +1087,7 @@ if question:
             thinking.empty()
             response = normalize_latex("".join(streamed_parts))
             response, visualizations = extract_visualizations(response)
+            response = append_web_sources(response, web_results)
             visualizations = apply_requested_media_format(visualizations, question)
             answer_placeholder.markdown(response)
             render_visualizations(visualizations)
@@ -988,9 +1095,12 @@ if question:
     detected_chapter = results[0][0].chapter if results else "未分类"
     approximate_input_tokens = max(
         1,
-        (len(question) + len(context) + sum(len(item["content"]) for item in history)) // 4,
+        (len(question) + len(context) + len(web_context)
+         + sum(len(item["content"]) for item in history)) // 4,
     )
     approximate_output_tokens = max(1, len(response) // 4)
+    request_timing["模型流式总耗时"] = time.monotonic() - model_start
+    request_timing["端到端耗时"] = time.monotonic() - request_started
     interaction_id = analytics_db.log_interaction(
         st.session_state.get("analytics_session_id", ""),
         question,
@@ -1004,6 +1114,7 @@ if question:
         request_error,
         [chunk.source for chunk, _score in results],
         st.session_state.user_id,
+        request_timing=request_timing,
     )
     if request_error:
         analytics_db.log_error(
@@ -1023,6 +1134,7 @@ if question:
         "content": response,
         "visualizations": visualizations,
         "interaction_id": interaction_id,
+        "parent_message_id": user_message.get("id"),
     }
     st.session_state.messages.append(assistant_message)
     if st.session_state.user_id is not None:

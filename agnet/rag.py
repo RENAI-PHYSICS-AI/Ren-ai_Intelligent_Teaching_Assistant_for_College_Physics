@@ -4,7 +4,7 @@ import json
 import heapq
 import math
 import re
-from collections import Counter
+from collections import Counter, OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -28,7 +28,7 @@ class Chunk:
 
 
 def _terms(text: str) -> list[str]:
-    normalized = re.sub(r"\s+", "", text.lower())
+    normalized = re.sub(r"\\s+", "", text.lower())
     chinese = [normalized[i : i + 2] for i in range(max(0, len(normalized) - 1))
                if "\u4e00" <= normalized[i] <= "\u9fff"]
     latin = re.findall(r"[a-z][a-z0-9_]{1,}|\d+(?:\.\d+)?", text.lower())
@@ -47,6 +47,9 @@ class KnowledgeBase:
         self.df: Counter[str] = Counter()
         self.idf: dict[str, float] = {}
         self.avg_len = 1.0
+        self.chapters_index: dict[str, set[int]] = {}
+        self._search_cache: OrderedDict[tuple[str, tuple[str, ...], int], list[tuple[int, float]]] = OrderedDict()
+        self._search_cache_size = 200
         self.reload()
 
     def reload(self) -> None:
@@ -60,7 +63,10 @@ class KnowledgeBase:
         self.term_counts = [Counter(terms) for terms in self.tokens]
         self.df = Counter()
         self.postings = {}
+        self.chapters_index = {}
         for index, counts in enumerate(self.term_counts):
+            chunk = self.chunks[index]
+            self.chapters_index.setdefault(chunk.chapter or "全部", set()).add(index)
             for term in counts:
                 self.df[term] += 1
                 self.postings.setdefault(term, []).append(index)
@@ -70,6 +76,7 @@ class KnowledgeBase:
             term: math.log(1 + (n - frequency + 0.5) / (frequency + 0.5))
             for term, frequency in self.df.items()
         }
+        self._search_cache.clear()
 
     @property
     def chapters(self) -> list[str]:
@@ -79,18 +86,47 @@ class KnowledgeBase:
         qterms = _terms(query)
         if not qterms:
             return []
-        k1 = 1.5; b = 0.75
+
+        try:
+            top_k_int = int(top_k)
+        except (TypeError, ValueError):
+            top_k_int = 6
+        top_k_int = max(1, min(top_k_int, 50))
+
+        qterms_unique = tuple(sorted(set(qterms)))
+        cache_key = (chapter, qterms_unique, top_k_int)
+        cached = self._search_cache.get(cache_key)
+        if cached is not None:
+            self._search_cache.move_to_end(cache_key)
+            return [(self.chunks[idx], score) for idx, score in cached]
+
+        k1 = 1.5
+        b = 0.75
         candidate_ids: set[int] = set()
-        for term in set(qterms):
-            candidate_ids.update(self.postings.get(term, ()))
-        results: list[tuple[float, int, Chunk]] = []
+
+        if chapter == "全部":
+            for term in qterms_unique:
+                candidate_ids.update(self.postings.get(term, ()))
+        else:
+            chapter_ids = self.chapters_index.get(chapter, set())
+            if not chapter_ids:
+                return []
+            chapter_ids = set(chapter_ids)
+            for term in qterms_unique:
+                for idx in self.postings.get(term, ()):  # filter by chapter during gather
+                    if idx in chapter_ids:
+                        candidate_ids.add(idx)
+
+        if not candidate_ids:
+            return []
+
+        results: list[tuple[float, int]] = []
         for index in candidate_ids:
-            chunk = self.chunks[index]
-            if chapter != "全部" and chunk.chapter != chapter:
-                continue
             counts = self.term_counts[index]
-            length = max(1, len(self.tokens[index])); score = 0.0
-            for term in qterms:
+            chunk = self.chunks[index]
+            length = max(1, len(self.tokens[index]))
+            score = 0.0
+            for term in qterms_unique:
                 tf = counts[term]
                 if not tf:
                     continue
@@ -98,9 +134,15 @@ class KnowledgeBase:
                 score += idf * tf * (k1 + 1) / (tf + k1 * (1 - b + b * length / self.avg_len))
             score *= float(chunk.priority or 1.0)
             if score:
-                results.append((score, index, chunk))
-        best = heapq.nlargest(top_k, results, key=lambda item: (item[0], -item[1]))
-        return [(chunk, score) for score, _, chunk in best]
+                results.append((score, index))
+
+        best = heapq.nlargest(top_k_int, results, key=lambda item: item[0])
+        scored = [(idx, score) for score, idx in best]
+        self._search_cache[cache_key] = scored
+        if len(self._search_cache) > self._search_cache_size:
+            self._search_cache.popitem(last=False)
+
+        return [(self.chunks[idx], score) for idx, score in scored]
 
 
 def context_text(results: Iterable[tuple[Chunk, float]], max_chars: int = 10000) -> str:
@@ -111,5 +153,6 @@ def context_text(results: Iterable[tuple[Chunk, float]], max_chars: int = 10000)
         block = f"[资料{i}] {chunk.source}｜{chunk.chapter}｜{location}\n{chunk.text}"
         if used + len(block) > max_chars:
             break
-        blocks.append(block); used += len(block)
+        blocks.append(block)
+        used += len(block)
     return "\n\n".join(blocks)

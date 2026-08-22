@@ -93,8 +93,8 @@ set_env_value() {
 }
 
 set_env_value PHYSICS_GATEWAY_HTTPS_PORT "$HTTPS_PORT"
-set_env_value PHYSICS_GATEWAY_TLS_CERT "$SERVER_CERT"
-set_env_value PHYSICS_GATEWAY_TLS_KEY "$SERVER_KEY"
+set_env_value PHYSICS_GATEWAY_TLS_CERT "config/tls/server.crt"
+set_env_value PHYSICS_GATEWAY_TLS_KEY "config/tls/server.key"
 set_env_value PHYSICS_GATEWAY_PUBLIC_PREFIX "$PUBLIC_PREFIX"
 set_env_value PHYSICS_PUBLIC_BASE_URL "https://$SERVER_IP:$HTTPS_PORT$PUBLIC_PREFIX"
 chmod 600 "$CONFIG_FILE"

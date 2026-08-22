@@ -29,7 +29,10 @@ TEXT_SUFFIXES = {
     ".sh",
     ".toml",
 }
-SKIP_PARTS = {".git", ".venv", "__pycache__", "教学素材"}
+SKIP_PARTS = {
+    ".git", ".venv", ".runtime", ".codex-tmp", ".tmp",
+    "__pycache__", "教学素材", "tmp",
+}
 
 
 def project_text_files():

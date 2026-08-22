@@ -2,12 +2,14 @@
 
 面向大学物理课程的本地 RAG 智能助教。项目以祝之光《物理学》第 5 版及配套习题解答为主要依据，并使用课程资料和实验专题知识作为补充，支持教材检索、概念讲解、公式推导、图片识题、流式语音输入、历史对话和交互式物理实验。
 
-> 回答以本地知识库为核心，同时由模型服务检索并整合可靠的网络内容作为补充。应用不单独运行网页爬虫，教材课程口径与网络资料不一致时以教材为准。
+> 回答以本地知识库为核心；遇到明确联网请求或时效性问题时，应用按需调用 Tavily 检索网络资料，再由本地模型统一组织答案。教材课程口径与网络资料不一致时以教材为准。
+
+> 项目已在学校服务器部署运行。校内访问地址：[https://192.168.222.147:1234/agent/](https://192.168.222.147:1234/agent/)
 
 ## 功能
 
 - 本地 RAG：检索教材、习题解答、课件及实验专题知识。
-- 网络内容补充：由模型检索知识库未覆盖的背景、最新进展与拓展内容，并与教材结论整合。
+- 网络内容补充：应用按需调用 Tavily 检索知识库未覆盖的背景、最新进展与拓展内容，并交给本地模型与教材结论整合。
 - 多模态问答：可直接粘贴或上传题目图片。
 - 实时语音输入：浏览器录音经 Paraformer-zh-streaming 在本机逐段转写，最终文字填入提问框供确认。
 - 流式讲解：支持连续对话、LaTeX 公式和回答位置跟随。
@@ -53,7 +55,7 @@ flowchart LR
     E --> G[历史消息与当前问题]
     F --> H[OpenAI-compatible 视觉语言模型]
     G --> H
-    O[模型网络检索] --> H
+    O[Tavily 按需联网检索] --> H
     H --> I[流式讲解与 LaTeX]
     H --> J[受限可视化规范]
     J --> K[Plotly 图表或动画演示]
@@ -65,8 +67,8 @@ flowchart LR
 一次普通问答会经历以下过程：
 
 1. 从本地知识库检索与问题最相关的教材和课程内容；
-2. 将检索内容、保留的历史消息、文字问题及图片共同发送给模型；
-3. 模型以教材内容为主线，检索网络内容补充本地知识库未覆盖的信息；
+2. 若问题具有时效性或明确要求联网，由应用调用 Tavily，并把清洗后的结果作为外部参考；上传图片先由视觉模型识别，只把识别文本交给回答模型；
+3. 将知识库内容、按需联网结果、最近两轮历史和当前问题交给 GLM，以教材内容为主线组织答案；
 4. 在页面中流式显示整合后的答案，并持续渲染 Markdown 与 LaTeX；
 5. 若答案包含受支持的可视化规范，则在代码之后直接生成运行演示；
 6. 注册用户的问答写入历史，反馈与错误写入学情数据库。
@@ -153,8 +155,17 @@ Copy-Item .\.streamlit\secrets.toml.example .\.streamlit\secrets.toml
 
 ```toml
 physics_api_key = ""
-physics_base_url = "http://192.168.222.147:1234/v1"
-physics_model = "qwen/qwen3.6-27b"
+physics_base_url = "https://192.168.222.147:1234/v1"
+physics_model = "glm47-local-prod"
+physics_vision_model = "qwen-vl30-local-prod"
+physics_vision_max_output_tokens = "1024"
+physics_chat_no_think_suffix = "/nothink"
+physics_vision_no_think_suffix = "/no_think"
+physics_ca_bundle = ".streamlit/physics-assistant-ca.crt"
+physics_context_window = "8192"
+physics_history_max_messages = "4"
+physics_max_output_tokens = "1024"
+kb_context_max_chars = "2500"
 
 admin_username = "admin"
 admin_display_name = "课程管理员"
@@ -163,7 +174,9 @@ admin_token = "足够长的随机令牌"
 admin_login_url = "/admin-login"
 ```
 
-当前对话与图片识别统一使用 LM Link 设备 `tianwen` 上的 `qwen/qwen3.6-27b`；API 入口根据模型 ID 自动路由到该设备。
+当前采用本地双模型路由：普通对话和最终答案由学校 Rocky 服务器 `tjracphy` 本机的 GLM-4.7-Flash 生成，生产 API 标识为 `glm47-local-prod`；上传图片时先由本机 Qwen3-VL-30B-A3B-Instruct 提取题干、公式、图表和实验信息，生产 API 标识为 `qwen-vl30-local-prod`，随后只把识别文本交给 GLM 结合知识库组织答案。两个模型均以 8K 上下文、4 个并行槽无 TTL 常驻。Rocky 应用通过 `127.0.0.1:1235` 直连本机 LM Studio，不经过 LM Link；Windows 开发版通过服务器公开 API 入口调用同一组本地模型。
+
+Windows 与 Rocky 版本均已配置并启用 Tavily Search API 联网补充。普通教材概念、公式推导和计算题不会联网；问题明确要求联网，或包含“最新、近期、目前、进展、现行标准”等时效性表达时，应用才发送当前问题文本进行搜索。搜索结果经过清洗和长度限制后作为不可信外部参考交给 GLM，并在答案末尾附真实来源链接；搜索超时、额度不足或接口故障时自动退回本地知识库。结果在进程内缓存 30 分钟，用户身份、历史记录和图片不会发送给搜索服务。
 
 不要把 `secrets.toml`、API Key、密码或内网令牌提交到 Git。
 
@@ -172,7 +185,17 @@ admin_login_url = "/admin-login"
 | 环境变量 | 用途 |
 | --- | --- |
 | `PHYSICS_BASE_URL` | OpenAI-compatible API 根地址，通常以 `/v1` 结尾 |
-| `PHYSICS_MODEL` | 模型 ID |
+| `PHYSICS_MODEL` | 对话与最终答案模型 ID，当前为 `glm47-local-prod` |
+| `PHYSICS_VISION_MODEL` | 图片识别模型 ID，当前为 `qwen-vl30-local-prod` |
+| `PHYSICS_VISION_MAX_OUTPUT_TOKENS` | 图片识别阶段最大输出 token，默认 1024 |
+| `PHYSICS_CHAT_NO_THINK_SUFFIX` | GLM 关闭思考的提示后缀，当前为 `/nothink` |
+| `PHYSICS_VISION_NO_THINK_SUFFIX` | Qwen-VL 关闭思考的提示后缀，当前为 `/no_think` |
+| `PHYSICS_CA_BUNDLE` | 可选的 HTTPS 模型服务 CA 公钥证书路径 |
+| `PHYSICS_WEB_SEARCH_PROVIDER` | 可选联网搜索提供方；设为 `tavily` 后与密钥共同启用 |
+| `TAVILY_API_KEY` | Tavily 服务密钥；Windows 保存在 `.streamlit/secrets.toml`，Rocky 保存在 `config/physics-assistant.env` |
+| `PHYSICS_WEB_SEARCH_MAX_RESULTS` | 单次最多使用的搜索结果数，默认 5 |
+| `PHYSICS_WEB_SEARCH_TIMEOUT_SECONDS` | 联网搜索读取超时，默认 8 秒 |
+| `PHYSICS_WEB_SEARCH_CACHE_MINUTES` | 相同问题搜索结果缓存时间，默认 30 分钟 |
 | `PHYSICS_API_KEY` | 模型服务密钥；无鉴权的本地服务可留空 |
 | `DASHSCOPE_API_KEY` | 兼容的 Qwen/DashScope 回退密钥 |
 | `PHYSICS_CONTEXT_WINDOW` | 模型上下文窗口预算 |
@@ -275,7 +298,7 @@ Rocky 安装脚本会在用户目录中准备 Python 3.13、项目虚拟环境�
 
 “智能助教”模式把麦克风按钮放在提问框内部、发送按钮左侧。点按开始录音，再次点按停止；浏览器把单声道音频重采样为 16 kHz Float32 PCM，并通过同源 WebSocket 持续发送。中间识别结果显示在输入框上方的小浮层中，停止后才把最终文字填入聊天框，不会自动发送，用户仍可检查或修改文字。
 
-语音后端采用 `sherpa-onnx 1.13.4` 和中英双语 `Paraformer-zh-streaming` INT8 模型，纯 CPU 运行，不依赖 PyTorch、GPU、FFmpeg 或系统麦克风设备。模型固定到公开仓库的具体 revision 并校验每个文件的大小与 SHA-256，许可证为 Apache-2.0。该模型不提供词级时间戳；Sherpa 的在线 Paraformer 接口也没有真正的热词偏置，本项目仅对少量常见物理术语做确定性纠错。
+语音后端采用 `sherpa-onnx 1.13.4` 和中英双语 `Paraformer-zh-streaming` INT8 模型，以独立的轻量运行时提供服务，不依赖 PyTorch、FFmpeg 或系统麦克风设备。模型固定到公开仓库的具体 revision 并校验每个文件的大小与 SHA-256，许可证为 Apache-2.0。该模型不提供词级时间戳；Sherpa 的在线 Paraformer 接口也没有真正的热词偏置，本项目仅对少量常见物理术语做确定性纠错。
 
 浏览器麦克风权限有一项必须满足的前提：非 `localhost` 页面通常需要客户端信任的 HTTPS。Rocky 版可执行 `PHYSICS_HTTPS_HOST=<服务器IP> bash setup_https.sh` 生成项目专用入口；客户端只导入 CA 公钥证书，绝不能复制 CA 私钥或服务器私钥。若网络暂时只放行现有 HTTP 反代，可在受控内网的 Edge 上为该单一来源配置官方安全来源例外，代价是语音仍以未加密 HTTP/WS 传输。ASR 服务自身始终只监听回环地址，不需要对外开放 `8604`。
 
@@ -304,7 +327,9 @@ agnet/data/assistant.db
 
 Windows 版管理员 API 默认仅监听 `127.0.0.1:8603`。Rocky 版由 `8501` 用户级网关转发管理员路由，因此学生页面和管理员页面共用一个对外端口，`8603` 不对局域网开放。
 
-历史消息会受到上下文预算限制：数据库可长期保留完整记录，但每次调用模型时只选取不超过 `PHYSICS_HISTORY_MAX_MESSAGES` 且能放入模型上下文窗口的近期内容。这能避免长对话超过模型限制，同时保持连续问答的上下文联系。
+每次新问答的分阶段响应耗时仅在管理员页面显示，学生界面不展示开发联调数据；管理员可查看最近 30 次问答的知识检索、上下文拼装、历史加载、首段答案、模型生成和端到端耗时。
+
+历史消息会受到上下文预算限制：数据库仍长期保留完整记录，但默认只向模型发送最近两轮完整问答（4 条消息），并将知识库上下文控制在 2500 字符以内。普通回答默认最多生成 1024 token，并提示模型优先在 600～800 个中文字符内完整作答。这能保留追问所需语境，同时显著缩短本地模型的提示词处理和生成时间。
 
 ## 重新构建知识库
 
@@ -344,7 +369,7 @@ cd ~/agent_of_college_physics
 - 李萨如图形：相位差、振幅比、有理频率比和频率失谐；
 - 声速测量：回声法、双麦克风时差法、示波器相位差法和驻波法。
 
-实验按需启动，主要图形在客户端浏览器通过 WebGL2 渲染，纯 CPU Rocky 服务器也可运行。Windows 首次使用前可手动初始化：
+实验按需启动，主要图形在客户端浏览器通过 WebGL2 渲染。Windows 首次使用前可手动初始化：
 
 ```powershell
 cd .\agnet
@@ -388,11 +413,13 @@ Rocky 的 `install.sh` 默认完成相同的初始化；可用 `PRECOMPILE_EXPER
 
 `agent_of_college_physics` 文件夹是某次迁移时生成的完整快照。Windows 版后续新增的账号、历史、教材或知识库不会自动进入 Rocky 版；需要重新执行安全迁移或有选择地同步相应数据文件。迁移数据库时应先停止写入，或使用 SQLite 在线备份，避免复制到不一致的 WAL 状态。
 
-迁移前可检查源码、知识库和 SQLite 数据中是否写死 Windows 盘符：
+迁移前后均可检查源码、知识库和 SQLite 数据中是否写死 Windows 盘符：
 
 ```powershell
 .\agnet\.venv\Scripts\python.exe .\check_portable_paths.py
 ```
+
+Windows 与 Rocky 两套程序均从启动脚本或当前文件的位置推导项目根目录，项目文件夹可以整体移动或改名。项目内的数据库、知识库、证书和运行目录使用相对位置；模型服务地址、系统字体、外部程序等机器级资源仍由环境配置指定。
 
 ## 常见问题
 

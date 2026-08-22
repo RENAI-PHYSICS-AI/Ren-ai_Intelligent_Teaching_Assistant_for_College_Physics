@@ -16,6 +16,31 @@ VOICE_CSS = """
 VOICE_JS = r"""
 export default function(component) {
   const data = component.data || {};
+  const controllerKey = '__physicsVoiceInputController';
+  const previousController = window[controllerKey];
+  if (previousController && typeof previousController.dispose === 'function') {
+    try { previousController.dispose(); } catch (_) {}
+  }
+
+  // Controllers created by an older build did not publish a disposer.  Keep
+  // their nodes connected in an invisible retirement bin so their observers
+  // cannot reinsert duplicate microphone buttons during this hot upgrade.
+  let retirementBin = document.getElementById('physics-voice-retired-portals');
+  if (!retirementBin) {
+    retirementBin = document.createElement('div');
+    retirementBin.id = 'physics-voice-retired-portals';
+    retirementBin.setAttribute('aria-hidden', 'true');
+    retirementBin.style.setProperty('display', 'none', 'important');
+    document.body.appendChild(retirementBin);
+  }
+  document.querySelectorAll('.physics-voice-button, .physics-voice-popover').forEach((node) => {
+    if (!retirementBin.contains(node)) retirementBin.appendChild(node);
+  });
+
+  const instanceId = (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function')
+    ? globalThis.crypto.randomUUID()
+    : String(Date.now()) + '-' + Math.random().toString(16).slice(2);
+  let disposed = false;
 
   const portalStyle = document.createElement('style');
   portalStyle.textContent = `
@@ -172,6 +197,35 @@ export default function(component) {
   let outboundParts = [];
   let outboundCount = 0;
 
+  function dispose() {
+    if (disposed) return;
+    disposed = true;
+    terminalReceived = true;
+    if (statusTimer) window.clearTimeout(statusTimer);
+    if (portalFrame) window.cancelAnimationFrame(portalFrame);
+    if (portalObserver) portalObserver.disconnect();
+    button.onclick = null;
+    if (recorderNode) recorderNode.port.onmessage = null;
+    stopCapture();
+    const activeSocket = socket;
+    socket = null;
+    if (activeSocket) {
+      activeSocket.onopen = null;
+      activeSocket.onmessage = null;
+      activeSocket.onerror = null;
+      activeSocket.onclose = null;
+      if (activeSocket.readyState < WebSocket.CLOSING) activeSocket.close();
+    }
+    button.remove();
+    popover.remove();
+    portalStyle.remove();
+    if (window[controllerKey]?.instanceId === instanceId) {
+      delete window[controllerKey];
+    }
+  }
+
+  window[controllerKey] = {instanceId, dispose};
+
   function setButtonLabel(message) {
     label.textContent = message;
     button.setAttribute('aria-label', message);
@@ -189,7 +243,17 @@ export default function(component) {
     }
   }
 
+  function retireDuplicatePortals() {
+    document.querySelectorAll('.physics-voice-button, .physics-voice-popover').forEach((node) => {
+      if (node !== button && node !== popover && !retirementBin.contains(node)) {
+        retirementBin.appendChild(node);
+      }
+    });
+  }
+
   function ensurePortal() {
+    if (disposed) return;
+    retireDuplicatePortals();
     const chat = document.querySelector('[data-testid="stChatInput"]');
     if (!chat) return;
     const submit = chat.querySelector(
@@ -201,7 +265,7 @@ export default function(component) {
   }
 
   function schedulePortal() {
-    if (portalFrame) return;
+    if (disposed || portalFrame) return;
     portalFrame = window.requestAnimationFrame(() => {
       portalFrame = 0;
       ensurePortal();
@@ -292,12 +356,21 @@ export default function(component) {
   }
 
   async function startAudio() {
-    mediaStream = await navigator.mediaDevices.getUserMedia({
+    const acquiredStream = await navigator.mediaDevices.getUserMedia({
       audio: {channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true},
       video: false
     });
+    if (disposed) {
+      acquiredStream.getTracks().forEach((track) => track.stop());
+      throw new DOMException('语音组件已更新', 'AbortError');
+    }
+    mediaStream = acquiredStream;
     audioContext = new AudioContext({latencyHint: 'interactive'});
     await audioContext.resume();
+    if (disposed) {
+      stopCapture();
+      throw new DOMException('语音组件已更新', 'AbortError');
+    }
     if (audioContext.state !== 'running') throw new Error('浏览器未允许启动音频设备');
     const workletSource = [
       'class PhysicsVoiceProcessor extends AudioWorkletProcessor {',
@@ -311,12 +384,16 @@ export default function(component) {
     ].join('\n');
     workletUrl = URL.createObjectURL(new Blob([workletSource], {type: 'text/javascript'}));
     await audioContext.audioWorklet.addModule(workletUrl);
+    if (disposed) {
+      stopCapture();
+      throw new DOMException('语音组件已更新', 'AbortError');
+    }
     sourceNode = audioContext.createMediaStreamSource(mediaStream);
     recorderNode = new AudioWorkletNode(audioContext, 'physics-voice-processor');
     muteNode = audioContext.createGain();
     muteNode.gain.value = 0;
     recorderNode.port.onmessage = (event) => {
-      if (recording && event.data) appendSource(new Float32Array(event.data));
+      if (!disposed && recording && event.data) appendSource(new Float32Array(event.data));
     };
     sourceNode.connect(recorderNode);
     recorderNode.connect(muteNode);
@@ -352,7 +429,7 @@ export default function(component) {
   }
 
   async function beginRecording() {
-    if (data.disabled) return;
+    if (data.disabled || disposed) return;
     if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setStatus('当前页面不是安全来源；请使用 HTTPS 后启用麦克风', true);
       return;
@@ -370,16 +447,20 @@ export default function(component) {
     socket = new WebSocket(websocketUrl());
     socket.binaryType = 'arraybuffer';
     socket.onopen = () => {
+      if (disposed) return;
       socket.send(JSON.stringify({type: 'start', sample_rate: targetRate, format: 'pcm_f32le'}));
     };
     socket.onmessage = async (event) => {
+      if (disposed) return;
       let message;
       try { message = JSON.parse(event.data); } catch (_) { return; }
       if (message.type === 'ready') {
         try {
           await startAudio();
+          if (disposed) return;
           button.disabled = false;
         } catch (error) {
+          if (disposed) return;
           terminalReceived = true;
           stopCapture();
           setStatus('无法取得麦克风权限：' + (error.message || error), true);
@@ -414,6 +495,7 @@ export default function(component) {
       }
     };
     socket.onerror = () => {
+      if (disposed) return;
       terminalReceived = true;
       stopCapture();
       stopping = false;
@@ -421,6 +503,7 @@ export default function(component) {
       setStatus('无法连接 Paraformer 语音服务', true);
     };
     socket.onclose = (event) => {
+      if (disposed) return;
       if (recording) stopCapture();
       if (!terminalReceived) {
         const text = event.code === 1000
@@ -434,7 +517,7 @@ export default function(component) {
   }
 
   function finishRecording() {
-    if (!recording || stopping) return;
+    if (disposed || !recording || stopping) return;
     stopping = true;
     setStatus('正在整理最终识别结果……', false, true);
     if (!flushAudio()) return;
@@ -452,7 +535,10 @@ export default function(component) {
   button.onclick = () => recording ? finishRecording() : beginRecording();
   button.disabled = Boolean(data.disabled);
   portalObserver = new MutationObserver(() => {
-    if (button.isConnected && popover.isConnected) return;
+    const duplicateVisible = Array.from(
+      document.querySelectorAll('.physics-voice-button, .physics-voice-popover')
+    ).some((node) => node !== button && node !== popover && !retirementBin.contains(node));
+    if (button.isConnected && popover.isConnected && !duplicateVisible) return;
     schedulePortal();
   });
   portalObserver.observe(document.body, {childList: true, subtree: true});
@@ -468,21 +554,15 @@ export default function(component) {
     const healthPath = runtimeAsrPath().replace(/\/ws$/, '/health');
     fetch(healthPath, {cache: 'no-store'})
       .then((response) => response.ok ? response.json() : Promise.reject())
-      .then(() => setStatus('Paraformer 中文流式识别已就绪', false))
-      .catch(() => setStatus('语音服务尚未就绪，请稍后重试', true));
+      .then(() => {
+        if (!disposed) setStatus('Paraformer 中文流式识别已就绪', false);
+      })
+      .catch(() => {
+        if (!disposed) setStatus('语音服务尚未就绪，请稍后重试', true);
+      });
   }
 
-  return () => {
-    terminalReceived = true;
-    if (statusTimer) window.clearTimeout(statusTimer);
-    if (portalFrame) window.cancelAnimationFrame(portalFrame);
-    if (portalObserver) portalObserver.disconnect();
-    stopCapture();
-    if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
-    button.remove();
-    popover.remove();
-    portalStyle.remove();
-  };
+  return dispose;
 }
 """
 

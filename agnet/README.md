@@ -4,9 +4,11 @@
 
 本地 `rag.py` 使用 BM25 倒排索引和预缓存词频，避免每次查询扫描全部知识块；首次加载建立索引，后续请求复用缓存。
 
-回答策略以本地教材与 RAG 知识库为核心，同时由模型服务检索可靠网络内容进行补充；应用自身不运行独立网页爬虫。该策略固定启用，不提供用户开关。
+回答策略以本地教材与 RAG 知识库为核心，并已配置 Tavily Search API 按需补充网络资料。普通教材题不联网；明确要求联网或涉及最新、近期、目前、进展、现行标准等时效信息时才搜索。应用只发送当前问题文本，搜索失败会自动回到本地知识库，答案末尾附实际采用的来源链接。
 
-Rocky Linux 10（纯 CPU）版本位于仓库根目录的 [agent_of_college_physics/](../agent_of_college_physics/README.md)，对外端口仍为 `8501`。
+模型采用本地两段式路由：普通问题直接由 GLM-4.7-Flash 回答；上传图片时先由 Qwen3-VL-30B 提取可见信息，再把识别文本、知识库结果和学生问题交给 GLM 组织最终答案。图片原始数据不会再次发送给 GLM。
+
+Rocky Linux 10 独立版本位于仓库根目录的 [agent_of_college_physics/](../agent_of_college_physics/README.md)，对外端口仍为 `8501`。
 
 快速启动：
 
@@ -39,3 +41,5 @@ julia --project=experiments/sound_speed -e "using Pkg; Pkg.instantiate(); Pkg.pr
 ```
 
 管理员后台也由统一入口代理；管理员从主站登录后会跳转到 `/agent/analytics`（根路径部署时为 `/analytics`）。管理页面支持名册批量导入，以及未绑定名册记录的逐条修改和删除；已绑定记录受保护。详细配置见仓库根目录说明。
+
+Windows 联网搜索配置位于 `.streamlit/secrets.toml`。该文件使用 TOML 语法，字符串必须写在引号中，例如 `tavily_api_key = "..."`；不要直接复制 Linux 的 `KEY=value` 写法，也不要把密钥提交到 Git。

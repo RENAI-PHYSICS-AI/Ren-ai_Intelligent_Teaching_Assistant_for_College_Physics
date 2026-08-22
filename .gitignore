@@ -1,5 +1,7 @@
 # 临时PDF处理
 tmp/
+.tmp/
+.codex-tmp/
 # Python缓存
 __pycache__/
 *.pyc

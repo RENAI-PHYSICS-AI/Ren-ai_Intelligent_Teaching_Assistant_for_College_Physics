@@ -55,6 +55,40 @@ class VoiceInputLayoutTests(unittest.TestCase):
         self.assertIn('[data-testid="stChatInputSubmitButton"]', source)
         self.assertNotIn("const root = component.parentElement", source)
 
+    def test_microphone_portal_replaces_previous_controller(self) -> None:
+        source = (APP_DIR / "voice_input.py").read_text(encoding="utf-8")
+        self.assertIn("window[controllerKey] = {instanceId, dispose}", source)
+        self.assertIn("previousController.dispose()", source)
+        self.assertIn("if (disposed) return", source)
+        self.assertIn("return dispose", source)
+        self.assertLess(
+            source.index("previousController.dispose()"),
+            source.index("const button = document.createElement('button')"),
+        )
+        for cleanup in (
+            "portalObserver.disconnect()",
+            "window.cancelAnimationFrame(portalFrame)",
+            "recorderNode.port.onmessage = null",
+            "button.remove()",
+            "popover.remove()",
+        ):
+            self.assertIn(cleanup, source)
+
+    def test_disposed_audio_start_releases_acquired_microphone(self) -> None:
+        source = (APP_DIR / "voice_input.py").read_text(encoding="utf-8")
+        self.assertIn("const acquiredStream = await navigator.mediaDevices.getUserMedia", source)
+        self.assertIn("acquiredStream.getTracks().forEach((track) => track.stop())", source)
+        self.assertGreaterEqual(source.count("if (disposed)"), 8)
+        self.assertIn("if (data.disabled || disposed) return", source)
+        self.assertIn("if (disposed || !recording || stopping) return", source)
+
+    def test_legacy_microphones_are_retired_without_reinsertion(self) -> None:
+        source = (APP_DIR / "voice_input.py").read_text(encoding="utf-8")
+        self.assertIn("physics-voice-retired-portals", source)
+        self.assertIn("retirementBin.appendChild(node)", source)
+        self.assertIn("retireDuplicatePortals()", source)
+        self.assertIn("&& !duplicateVisible", source)
+
 
 class OriginTests(unittest.TestCase):
     def test_same_origin_uses_forwarded_public_host(self) -> None:

@@ -134,6 +134,7 @@ def init_db():
     _ensure_column(conn, "sessions", "user_id", "INTEGER")
     _ensure_column(conn, "sessions", "last_seen", "TEXT")
     _ensure_column(conn, "interactions", "user_id", "INTEGER")
+    _ensure_column(conn, "interactions", "timing_details", "TEXT")
     _ensure_column(conn, "error_log", "user_id", "INTEGER")
     _ensure_column(conn, "feedback", "user_id", "INTEGER")
     _ensure_column(conn, "users", "identity_type", "TEXT")
@@ -637,24 +638,55 @@ def end_session(session_id, total_q, total_err, ti, to):
 
 def log_interaction(session_id, question, answer, chapter, provider, model,
                     tokens_input, tokens_output, response_time_ms, error=None,
-                    rag_chunks=None, user_id=None):
+                    rag_chunks=None, user_id=None, request_timing=None):
+    timing_details = None
+    if request_timing:
+        timing_details = json.dumps(
+            {key: round(float(value) * 1000, 1) for key, value in request_timing.items()},
+            ensure_ascii=False,
+        )
     conn = _get_conn()
     cursor = conn.execute(
         """INSERT INTO interactions
            (session_id, timestamp, question, answer, chapter, provider, model,
             tokens_input, tokens_output, response_time_ms, error,
-            rag_chunks_used, question_length, answer_length, user_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            rag_chunks_used, question_length, answer_length, user_id, timing_details)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (session_id, datetime.now().isoformat(), question, answer, chapter,
          provider, model, tokens_input, tokens_output, response_time_ms, error,
          json.dumps(rag_chunks, ensure_ascii=False) if rag_chunks else None,
          len(question) if question else 0, len(answer) if answer else 0,
-         user_id)
+         user_id, timing_details)
     )
     conn.commit()
     interaction_id = cursor.lastrowid
     conn.close()
     return interaction_id
+
+
+def get_recent_response_timings(limit=30):
+    """Return per-stage response timings for the administrator dashboard."""
+    conn = _get_conn()
+    rows = conn.execute(
+        """SELECT i.timestamp, i.question, i.model, i.response_time_ms,
+                  i.timing_details, u.username, u.display_name
+           FROM interactions i
+           LEFT JOIN users u ON u.id = i.user_id
+           WHERE i.timing_details IS NOT NULL AND TRIM(i.timing_details) <> ''
+           ORDER BY i.timestamp DESC LIMIT ?""",
+        (limit,),
+    ).fetchall()
+    conn.close()
+    result = []
+    for row in rows:
+        item = dict(row)
+        try:
+            item["timings"] = json.loads(item.pop("timing_details") or "{}")
+        except (TypeError, json.JSONDecodeError):
+            item["timings"] = {}
+            item.pop("timing_details", None)
+        result.append(item)
+    return result
 
 
 def log_error(session_id, question, error_type, error_message, traceback_str="", user_id=None):
