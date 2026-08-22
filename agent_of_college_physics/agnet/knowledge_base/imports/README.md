@@ -4,6 +4,8 @@
 
 - `lissajous.jsonl`：李萨如图形、机械振动、示波器测量及相关经典资料。
 - `sound_speed.jsonl`：声速、声波、驻波、相位法、时差法和回声法等实验资料。
+- `electron_em.jsonl`：电子荷质比、电子束圆轨道、亥姆霍兹线圈、磁聚焦、汤姆孙交叉场、数据拟合与不确定度等实验资料。
+- `photoelectric.jsonl`：光电效应、伏安特性、遏止电压、普朗克常量拟合、接触电势与系统误差等实验资料。
 - `*.manifest.json`：原知识库的构建时间、文献数、文本块数和检索配置。
 - `*.extraction_report.json`：原始文献的逐文件解析与 OCR 建议记录。
 

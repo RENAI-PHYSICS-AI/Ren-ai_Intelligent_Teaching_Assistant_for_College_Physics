@@ -1,0 +1,108 @@
+[
+  {
+    "source": "Einstein_1905_Light_Quantum_Original.pdf",
+    "pages": 17,
+    "chunks": 1,
+    "empty_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17
+    ],
+    "ocr_recommended": true
+  },
+  {
+    "source": "Iowa_A2_Photoelectric_Effect_Lab.pdf",
+    "pages": 8,
+    "chunks": 20,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "MIT_2009_Photoelectric_Cutoff_Methods.pdf",
+    "pages": 5,
+    "chunks": 22,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "MIT_2024_Photoelectric_Effect_Lab_Guide.pdf",
+    "pages": 4,
+    "chunks": 30,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "NIST_2022_CODATA_Fundamental_Constants.pdf",
+    "pages": 7,
+    "chunks": 5,
+    "empty_pages": [],
+    "ocr_recommended": false,
+    "selected_pages": [
+      1
+    ]
+  },
+  {
+    "source": "PASCO_SE6609_Photoelectric_Apparatus_Manual.pdf",
+    "pages": 28,
+    "chunks": 82,
+    "empty_pages": [],
+    "ocr_recommended": false,
+    "selected_pages": [
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26
+    ]
+  },
+  {
+    "source": "PHYWE_P2510402_Photoelectric_Planck.pdf",
+    "pages": 13,
+    "chunks": 26,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Purdue_Photoelectric_Effect_Lab.pdf",
+    "pages": 18,
+    "chunks": 56,
+    "empty_pages": [
+      14,
+      15,
+      16
+    ],
+    "ocr_recommended": false
+  }
+]

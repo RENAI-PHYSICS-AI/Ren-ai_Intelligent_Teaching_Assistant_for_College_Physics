@@ -1,0 +1,13 @@
+{
+  "created_at": "2026-08-22T18:14:53.587753+08:00",
+  "documents": 11,
+  "pdf_documents": 8,
+  "chunks": 301,
+  "features": 60000,
+  "chunk_size": 760,
+  "chunk_overlap": 120,
+  "retrieval": "character TF-IDF + BM25",
+  "ocr_recommended_documents": [
+    "Einstein_1905_Light_Quantum_Original.pdf"
+  ]
+}

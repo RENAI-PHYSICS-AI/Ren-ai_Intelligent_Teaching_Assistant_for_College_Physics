@@ -1,0 +1,144 @@
+[
+  {
+    "source": "Alzate_Cardona_2019_Magnetic_Field_Visualizer.pdf",
+    "pages": 8,
+    "chunks": 33,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "CCNY_Lorentz_Force_Apparatus_Instructions.pdf",
+    "pages": 9,
+    "chunks": 31,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Columbia_2022_Lab_Manual_Experiment4_em.pdf",
+    "pages": 134,
+    "chunks": 24,
+    "empty_pages": [],
+    "ocr_recommended": false,
+    "selected_pages": [
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44
+    ]
+  },
+  {
+    "source": "Gray_2024_em_Systematic_Uncertainty.pdf",
+    "pages": 7,
+    "chunks": 64,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "IITK_2024_25_Physics_Lab_Manual.pdf",
+    "pages": 84,
+    "chunks": 23,
+    "empty_pages": [],
+    "ocr_recommended": false,
+    "selected_pages": [
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42
+    ]
+  },
+  {
+    "source": "LD_Didactic_P6.1.3.1_Specific_Charge.pdf",
+    "pages": 6,
+    "chunks": 22,
+    "empty_pages": [
+      6
+    ],
+    "ocr_recommended": false
+  },
+  {
+    "source": "NIST_2022_CODATA_Full_Report.pdf",
+    "pages": 61,
+    "chunks": 531,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "NIST_2022_CODATA_Fundamental_Constants.pdf",
+    "pages": 1,
+    "chunks": 12,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "PASCO_SE-9629_em_Apparatus_Manual.pdf",
+    "pages": 5,
+    "chunks": 29,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Rochester_Experiment08_Electron_em.pdf",
+    "pages": 12,
+    "chunks": 30,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Sarapak_2025_3D_Virtual_Lab_em.pdf",
+    "pages": 12,
+    "chunks": 79,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Silviana_Prayogi_2023_Smartphone_em.pdf",
+    "pages": 6,
+    "chunks": 31,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "Thomson_1897_Cathode_Rays.pdf",
+    "pages": 25,
+    "chunks": 107,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "TJNU_电子比荷的测定_DH4520.pdf",
+    "pages": 8,
+    "chunks": 8,
+    "empty_pages": [
+      2
+    ],
+    "ocr_recommended": false
+  },
+  {
+    "source": "UVA_Lab07_Electron_em.pdf",
+    "pages": 22,
+    "chunks": 62,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "UZH_Electron_Charge_to_Mass_Ratio_Lab_Manual.pdf",
+    "pages": 12,
+    "chunks": 49,
+    "empty_pages": [],
+    "ocr_recommended": false
+  },
+  {
+    "source": "William_Mary_2014_emratio_Lab_Manual.pdf",
+    "pages": 7,
+    "chunks": 21,
+    "empty_pages": [],
+    "ocr_recommended": false
+  }
+]

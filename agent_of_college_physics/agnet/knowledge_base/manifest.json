@@ -1,5 +1,5 @@
 {
-  "chunks": 50142,
+  "chunks": 51779,
   "files_scanned": 668,
   "failures": [],
   "by_type": {
@@ -31,7 +31,13 @@
     "imported_lissajous_invalid": 38,
     "imported_sound_speed_chunks": 4047,
     "imported_sound_speed_duplicates": 8,
-    "imported_sound_speed_invalid": 4
+    "imported_sound_speed_invalid": 4,
+    "imported_electron_em_chunks": 1336,
+    "imported_electron_em_duplicates": 0,
+    "imported_electron_em_invalid": 0,
+    "imported_photoelectric_chunks": 301,
+    "imported_photoelectric_duplicates": 0,
+    "imported_photoelectric_invalid": 0
   },
   "primary_textbook": "教学素材/教材/物理学  第5版 -- 祝之光 -- 2018 -- 北京_高等教育出版社.pdf",
   "primary_solution": "教学素材/教材/物理学（第五版）祝之光习题解答.pdf",
@@ -39,11 +45,25 @@
   "base_chunks": 35973,
   "imported_knowledge_bases": [
     {
+      "collection": "电子荷质比实验",
+      "file": "electron_em.jsonl",
+      "chunks": 1336,
+      "duplicates_skipped": 0,
+      "invalid_skipped": 0
+    },
+    {
       "collection": "李萨如实验",
       "file": "lissajous.jsonl",
       "chunks": 10122,
       "duplicates_skipped": 0,
       "invalid_skipped": 38
+    },
+    {
+      "collection": "光电效应实验",
+      "file": "photoelectric.jsonl",
+      "chunks": 301,
+      "duplicates_skipped": 0,
+      "invalid_skipped": 0
     },
     {
       "collection": "声速测量实验",

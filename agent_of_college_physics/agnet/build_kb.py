@@ -40,7 +40,9 @@ _WPS = None
 _WPP = None
 IMPORTED_SOURCE_PREFIX = "竞赛知识库·"
 IMPORTED_COLLECTIONS = {
+    "electron_em": ("电子荷质比实验", "第13章 恒定磁场"),
     "lissajous": ("李萨如实验", "第6章 机械振动"),
+    "photoelectric": ("光电效应实验", "第17章 量子物理基础"),
     "sound_speed": ("声速测量实验", "第7章 机械波"),
 }
 
@@ -354,6 +356,14 @@ def import_existing_knowledge_bases(records: list[dict], stats: Counter, failure
                     chapter = classify("\n".join((source, topic, text)), fallback=fallback_chapter)
                     detail = "·".join(x for x in (label, topic) if x)
                     original_id = str(source_row.get("id") or f"line-{line_no}")
+                    source_kind = clean(str(source_row.get("source_type") or "")).lower()
+                    locator = clean(str(source_row.get("locator") or ""))
+                    if not locator:
+                        locator = (
+                            f"PDF第{page}页"
+                            if page and source_kind == "pdf"
+                            else (topic or "知识库文本块")
+                        )
                     records.append({
                         "id": f"imported-{path.stem}-{original_id}",
                         "source": source,
@@ -362,7 +372,7 @@ def import_existing_knowledge_bases(records: list[dict], stats: Counter, failure
                         "chapter": chapter,
                         "text": text,
                         "relative_path": f"已整合知识库/{label}/{source}",
-                        "locator": f"PDF第{page}页" if page else (topic or "知识库文本块"),
+                        "locator": locator,
                         "priority": 0.9,
                     })
                     added += 1
