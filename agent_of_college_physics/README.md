@@ -1,6 +1,6 @@
 # Rocky Linux 10 用户目录版
 
-本目录是一套与 Windows 版独立的、可直接复制的 Rocky Linux 10 版本，包含应用、整理后的教学资料、RAG 知识库和四套可视化实验。用户、管理员、历史、数据库备份和签名密钥属于本机运行数据，可通过受控流程迁移，但不进入 Git。
+本目录是一套与 Windows 版独立的、可直接复制的 Rocky Linux 10 版本，包含应用、整理后的教学资料、RAG 知识库和八套可视化实验。用户、管理员、历史、数据库备份和签名密钥属于本机运行数据，可通过受控流程迁移，但不进入 Git。
 
 回答以本地教材和 RAG 知识库为核心；遇到明确联网请求或时效性问题时，应用按需调用 Tavily 检索网络资料，再由本地模型统一组织答案。教材课程口径与网络资料不一致时以教材为准。
 
@@ -10,13 +10,13 @@
 
 ## 目录与数据
 
-当前目录约 `1.72 GiB`，包含：
+当前目录约 `1.77 GiB`，包含：
 
-- 原始教学素材 668 个文件；
-- RAG 主知识库 51,779 个文本块，其中电子荷质比专题文献 1,336 个、光电效应专题文献 301 个文本块；
+- 原始教学素材 702 个文件；
+- RAG 主知识库 53,048 个文本块，其中电子荷质比专题文献 1,336 个、光电效应专题文献 301 个、双棱镜专题文献 517 个、牛顿环专题文献 113 个、杨氏模量专题文献 354 个、转动惯量专题文献 285 个文本块；
 - 注册用户与匿名会话都支持逐条确认删除完整问答；只有问题而没有回答的孤立条目也可单独删除，注册用户的删除会同步写入数据库；
 - 本机运行时可保存用户、管理员、对话、反馈、学情、身份名册、数据库备份和管理员签名密钥，这些内容均由 Git 忽略；
-- 李萨如图形、声速测量、电子荷质比与光电效应实验；四类实验均包含四个按需加载的独立页面。
+- 李萨如图形、声速测量、电子荷质比、光电效应、双棱镜干涉、牛顿环、杨氏模量与转动惯量实验；八类实验均包含四个按需加载的独立页面。
 - Paraformer 中文流式语音输入服务及固定版本模型下载器。
 
 `.streamlit/secrets.toml` 和 API Key 不会明文迁移。模型连接写在安装后生成的 `config/physics-assistant.env` 中。
@@ -34,7 +34,11 @@
                  ├─ /experiments/lissajous   → 本机李萨如实验
                  ├─ /experiments/sound-speed → 本机声速实验
                  ├─ /experiments/electron-em → 本机电子荷质比实验（127.0.0.1:9386）
-                 └─ /experiments/photoelectric → 本机光电效应实验（127.0.0.1:9387）
+                 ├─ /experiments/photoelectric → 本机光电效应实验（127.0.0.1:9387）
+                 ├─ /experiments/biprism → 本机双棱镜实验（127.0.0.1:9388）
+                 ├─ /experiments/newton-rings → 本机牛顿环实验（127.0.0.1:9389）
+                 ├─ /experiments/young-modulus → 本机杨氏模量实验（127.0.0.1:9390）
+                 └─ /experiments/rotational-inertia → 本机转动惯量实验（127.0.0.1:9391）
 ```
 
 所有实际后端服务只监听本机或仅供服务器内部代理使用；校园网络只开放现有的 `1234` HTTPS 入口。`8501` 是反向代理内部上游，`8443` 是独立部署时的备用 HTTPS 网关，当前未对校园网络开放。实验图形由访问者浏览器的 WebGL2 渲染。
@@ -109,22 +113,34 @@ bash manage.sh logs
 
 服务由 `nohup` 在后台运行，日志位于 `.runtime/logs/`。本版本不会注册系统开机服务；服务器重启后进入目录执行 `bash manage.sh start` 即可。
 
-`bash manage.sh status` 默认显示 `admin`、`asr`、`web`、`gateway` 四项运行中；配置 HTTPS 后还会显示 `gateway_https`。`bash manage.sh check` 会验证 ASR 的直接回环地址、8501 代理地址以及已配置的 HTTPS 地址；电子荷质比或光电效应实验已按需启动时，还会分别校验 `9386`、`9387` 回环地址和 8501 代理路径。语音详细日志为 `.runtime/logs/asr.log`，HTTPS 网关日志为 `.runtime/logs/gateway_https.log`。`8604`、`9386`、`9387` 及其他实验内部端口固定只绑定 `127.0.0.1`，不得加入防火墙放行列表。
+`bash manage.sh status` 默认显示 `admin`、`asr`、`web`、`gateway` 四项运行中；配置 HTTPS 后还会显示 `gateway_https`。`bash manage.sh check` 会验证 ASR 的直接回环地址、8501 代理地址以及已配置的 HTTPS 地址；电子荷质比、光电效应、双棱镜、牛顿环、杨氏模量或转动惯量实验已按需启动时，还会分别校验 `9386`、`9387`、`9388`、`9389`、`9390`、`9391` 回环地址和 8501 代理路径。语音详细日志为 `.runtime/logs/asr.log`，HTTPS 网关日志为 `.runtime/logs/gateway_https.log`。`8604`、`9386`、`9387`、`9388`、`9389`、`9390`、`9391` 及其他实验内部端口固定只绑定 `127.0.0.1`，不得加入防火墙放行列表。
 
 ## 可视化实验
 
-四套 Julia/WGLMakie 实验均由主站按需启动，学生浏览器只访问统一入口，不直连实验内部端口：
+八套 Julia/WGLMakie 实验均由主站按需启动，学生浏览器只访问统一入口，不直连实验内部端口：
 
 - 李萨如图形：相位差、振幅比、有理频率比和频率失谐；
 - 声速测量：回声法、双麦克风时差法、示波器相位差法和驻波法；
 - 电子荷质比：电子束圆轨道、亥姆霍兹线圈磁场标定、纵向磁聚焦和汤姆孙交叉电磁场。
 - 光电效应：伏安特性与光强、普朗克常量拟合、红限与量子规律、遏止电压判读与系统误差。
+- 双棱镜干涉测钠黄光波长：分波阵面与虚光源、钠黄光干涉条纹、凸透镜二次成像测间距、波长拟合与不确定度。
+- 牛顿环测曲率半径：反射等厚干涉与半波损失、读数显微镜单向扫描、15 级逐差和直径平方线性拟合。
+- 杨氏模量测定：光杠杆微小伸长放大、加载与卸载读数、力—伸长线性拟合、杨氏模量与不确定度。
+- 转动惯量测定：扭摆法、三线摆法、平行轴定理验证，以及摆动周期拟合与不确定度。
 
-四类实验均只构建和加载当前选中的页面。李萨如子页面为 `/phase`、`/amplitude`、`/ratio`、`/detune`；声速子页面为 `/echo`、`/dual`、`/phase`、`/standing`。
+八类实验均只构建和加载当前选中的页面。李萨如子页面为 `/phase`、`/amplitude`、`/ratio`、`/detune`；声速子页面为 `/echo`、`/dual`、`/phase`、`/standing`。
 
 电子荷质比的公开基路径为 `/experiments/electron-em`，四个子页面分别是 `/circular`、`/helmholtz`、`/focus` 和 `/thomson`。它们共用一个只监听 `127.0.0.1:9386` 的内部服务，但分别构建和加载页面，避免打开一项实验时初始化其他三项。
 
 光电效应的公开基路径为 `/experiments/photoelectric`，四个子页面分别是 `/iv`、`/planck`、`/threshold` 和 `/uncertainty`。它们共用一个只监听 `127.0.0.1:9387` 的内部服务，也只构建当前选中的图形。
+
+双棱镜的公开基路径为 `/experiments/biprism`，四个子页面分别是 `/geometry`、`/fringes`、`/separation` 和 `/wavelength`。它们共用一个只监听 `127.0.0.1:9388` 的内部服务，固定测量空气中的钠黄光，标称参考波长为 `589.3 nm`。
+
+牛顿环的公开基路径为 `/experiments/newton-rings`，四个子页面分别是 `/formation`、`/measurement`、`/difference` 和 `/fit`。它们共用一个只监听 `127.0.0.1:9389` 的内部服务，以 `589.3 nm` 钠黄光为已知量测量平凸透镜曲率半径。
+
+杨氏模量的公开基路径为 `/experiments/young-modulus`，四个子页面分别是 `/principle`、`/loading`、`/fit` 和 `/uncertainty`。它们共用一个只监听 `127.0.0.1:9390` 的内部服务，以金属丝静态拉伸和光杠杆放大完成加载/卸载、线性拟合及不确定度分析。
+
+转动惯量的公开基路径为 `/experiments/rotational-inertia`，四个子页面分别是 `/torsion`、`/trifilar`、`/parallel-axis` 和 `/pendulum-fit`。它们共用一个只监听 `127.0.0.1:9391` 的内部服务，分别演示扭摆法、三线摆法、平行轴定理验证和摆动周期拟合。
 
 ## 模型配置
 
@@ -168,6 +184,14 @@ PHYSICS_ELECTRON_EM_PORT=9386
 PHYSICS_ELECTRON_EM_UPSTREAM=http://127.0.0.1:9386
 PHYSICS_PHOTOELECTRIC_PORT=9387
 PHYSICS_PHOTOELECTRIC_UPSTREAM=http://127.0.0.1:9387
+PHYSICS_BIPRISM_PORT=9388
+PHYSICS_BIPRISM_UPSTREAM=http://127.0.0.1:9388
+PHYSICS_NEWTON_RINGS_PORT=9389
+PHYSICS_NEWTON_RINGS_UPSTREAM=http://127.0.0.1:9389
+PHYSICS_YOUNG_MODULUS_PORT=9390
+PHYSICS_YOUNG_MODULUS_UPSTREAM=http://127.0.0.1:9390
+PHYSICS_ROTATIONAL_INERTIA_PORT=9391
+PHYSICS_ROTATIONAL_INERTIA_UPSTREAM=http://127.0.0.1:9391
 ```
 
 当前对话和最终答案使用学校 Rocky 服务器 `tjracphy` 本机的 GLM-4.7-Flash，生产 API 标识为 `glm47-local-prod`；图片先由本机 Qwen3-VL-30B-A3B-Instruct 识别，生产 API 标识为 `qwen-vl30-local-prod`，识别文本再交给 GLM 结合知识库组织答案。`manage.sh start/restart` 会检查两个模型的本机设备标识、8K 上下文和4个并行槽；缺少时自动加载，加载命令不设置 TTL，因此空闲时不会自动卸载。服务器或 LM Studio 重启后再次执行 `bash manage.sh start` 即可恢复双模型常驻。
@@ -273,6 +297,20 @@ tail -n 100 .runtime/logs/asr.log
 
 ```bash
 ./agnet/.venv/bin/python ./agnet/build_kb.py
+```
+
+杨氏模量专题的 10 份可追溯资料、354 个导入文本块及解析报告位于 `教学素材/物理实验/杨氏模量测定/` 和 `agnet/knowledge_base/imports/young_modulus.*`。需要单独重建并合并该专题时执行：
+
+```bash
+./agnet/.venv/bin/python ./agnet/build_young_modulus_import.py
+./agnet/.venv/bin/python ./agnet/build_kb.py --merge-imports-only
+```
+
+转动惯量专题的约 10 篇核心参考资料、8 份本地核验 PDF、285 个导入文本块及解析报告位于 `教学素材/物理实验/转动惯量测定/` 和 `agnet/knowledge_base/imports/rotational_inertia.*`。需要单独重建并合并该专题时执行：
+
+```bash
+./agnet/.venv/bin/python ./agnet/build_rotational_inertia_import.py
+./agnet/.venv/bin/python ./agnet/build_kb.py --merge-imports-only
 ```
 
 PDF 解析需要系统提供 `pdftotext`；DOCX/PPTX 原生解析。旧 `.doc/.ppt/.pot` 若需重建，建议由服务器管理员提供 LibreOffice headless。已有知识库不依赖这些工具。

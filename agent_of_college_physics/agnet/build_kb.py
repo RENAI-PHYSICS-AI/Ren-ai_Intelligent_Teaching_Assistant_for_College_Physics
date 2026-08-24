@@ -44,6 +44,10 @@ IMPORTED_COLLECTIONS = {
     "lissajous": ("李萨如实验", "第6章 机械振动"),
     "photoelectric": ("光电效应实验", "第17章 量子物理基础"),
     "sound_speed": ("声速测量实验", "第7章 机械波"),
+    "biprism": ("双棱镜干涉测波长实验", "第16章 波动光学"),
+    "newton_rings": ("牛顿环等厚干涉实验", "第16章 波动光学"),
+    "young_modulus": ("杨氏模量测定实验", "第2章 牛顿运动定律"),
+    "rotational_inertia": ("转动惯量测定实验", "第5章 刚体力学"),
 }
 
 
@@ -353,7 +357,14 @@ def import_existing_knowledge_bases(records: list[dict], stats: Counter, failure
                     source = str(source_row.get("source") or f"{label}资料")
                     page = int(source_row.get("page") or 0)
                     topic = clean(str(source_row.get("topic") or ""))
-                    chapter = classify("\n".join((source, topic, text)), fallback=fallback_chapter)
+                    # Registered experiment collections already have an authoritative
+                    # chapter mapping.  Do not let generic keywords override it (for
+                    # example, "牛顿环" must not be classified as 牛顿运动定律).
+                    chapter = (
+                        fallback_chapter
+                        if path.stem in IMPORTED_COLLECTIONS
+                        else classify("\n".join((source, topic, text)), fallback=fallback_chapter)
+                    )
                     detail = "·".join(x for x in (label, topic) if x)
                     original_id = str(source_row.get("id") or f"line-{line_no}")
                     source_kind = clean(str(source_row.get("source_type") or "")).lower()

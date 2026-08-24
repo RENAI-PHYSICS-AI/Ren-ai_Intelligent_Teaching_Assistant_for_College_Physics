@@ -26,8 +26,12 @@ Rocky Linux 10 独立版本位于仓库根目录的 [agent_of_college_physics/](
 - 声速测量：回声法、双麦克风时差法、示波器相位差法和驻波法。
 - 电子荷质比：电子束圆轨道、亥姆霍兹磁场标定、纵向磁聚焦和汤姆孙交叉电磁场。
 - 光电效应：伏安特性与光强、普朗克常量拟合、红限与量子规律、遏止电压判读与系统误差。
+- 双棱镜干涉测钠黄光波长：分波阵面与虚光源、钠黄光干涉条纹、凸透镜二次成像测间距、波长拟合与不确定度。
+- 牛顿环等厚干涉：半波损失与环纹形成、读数显微镜单向扫描、15 级逐差法、直径平方线性拟合与不确定度。
+- 杨氏模量测定：光杠杆微小伸长放大、加载与卸载读数、力—伸长线性拟合、杨氏模量与不确定度。
+- 转动惯量测定：扭摆法、三线摆法、平行轴定理验证，以及摆动周期拟合与不确定度。
 
-四类实验均采用四个独立页面，只初始化当前选中的页面：李萨如为 `/phase`、`/amplitude`、`/ratio`、`/detune`；声速为 `/echo`、`/dual`、`/phase`、`/standing`；电子荷质比为 `/circular`、`/helmholtz`、`/focus`、`/thomson`；光电效应为 `/iv`、`/planck`、`/threshold`、`/uncertainty`。
+八类实验均采用四个独立页面，只初始化当前选中的页面：李萨如为 `/phase`、`/amplitude`、`/ratio`、`/detune`；声速为 `/echo`、`/dual`、`/phase`、`/standing`；电子荷质比为 `/circular`、`/helmholtz`、`/focus`、`/thomson`；光电效应为 `/iv`、`/planck`、`/threshold`、`/uncertainty`；双棱镜为 `/geometry`、`/fringes`、`/separation`、`/wavelength`；牛顿环为 `/formation`、`/measurement`、`/difference`、`/fit`；杨氏模量为 `/principle`、`/loading`、`/fit`、`/uncertainty`；转动惯量为 `/torsion`、`/trifilar`、`/parallel-axis`、`/pendulum-fit`。双棱镜和牛顿环均以 `589.3 nm` 钠黄光为教学参考值。
 
 实验依赖 Julia 1.10、Bonito 与 WGLMakie，并在首次打开对应实验时按需启动。若是首次安装 Julia 依赖，可分别执行：
 
@@ -36,9 +40,15 @@ julia --project=experiments/lissajous -e "using Pkg; Pkg.instantiate(); Pkg.prec
 julia --project=experiments/sound_speed -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
 julia --project=experiments/electron_em -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
 julia --project=experiments/photoelectric -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
+julia --project=experiments/biprism -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
+julia --project=experiments/newton_rings -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
+julia --project=experiments/young_modulus -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
+julia --project=experiments/rotational_inertia -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
 ```
 
-四套实验只监听本机，由 `gateway.py` 通过主站 `8501/experiments/...` 内嵌代理。局域网使用前，以管理员身份运行 `enable_lan.ps1`，脚本只开放统一入口 `8501`。
+这些 Manifest 由 Julia 1.10.10 生成。若 Juliaup 当前默认版本较新，启动器会自动优先使用本机已安装的 `+1.10.10` 通道；`PHYSICS_JULIA_EXE` 和 `PHYSICS_JULIA_CHANNEL` 可用于显式覆盖。
+
+八套实验只监听本机，由 `gateway.py` 通过主站 `8501/experiments/...` 内嵌代理。局域网使用前，以管理员身份运行 `enable_lan.ps1`，脚本只开放统一入口 `8501`。
 
 同时启动学生端和管理员后台：
 

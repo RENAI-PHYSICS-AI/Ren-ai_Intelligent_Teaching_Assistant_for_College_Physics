@@ -848,6 +848,23 @@ const CLIENT_STATUS_SCRIPT = """
         parentWindow.postMessage({ type, detail }, "*");
     };
     let fitFrame = 0;
+    let layoutScale = 1;
+    const syncWGLPointerScale = event => {
+        const canvas = event && event.target instanceof HTMLCanvasElement
+            ? event.target
+            : null;
+        const screen = canvas && canvas.wglmakie_screen;
+        if (!screen || !Number.isFinite(screen.winscale) || screen.winscale <= 0) return;
+        if (!Number.isFinite(screen.__physicsBaseWinscale)) {
+            screen.__physicsBaseWinscale = screen.winscale;
+        }
+        const baseWinscale = screen.__physicsBaseWinscale;
+        screen.winscale = baseWinscale * layoutScale;
+        window.clearTimeout(screen.__physicsPointerScaleTimer);
+        screen.__physicsPointerScaleTimer = window.setTimeout(() => {
+            if (canvas.wglmakie_screen === screen) screen.winscale = baseWinscale;
+        }, 120);
+    };
     const fitLayout = () => {
         const page = document.querySelector(".photoelectric-lab");
         if (!page) return;
@@ -873,6 +890,7 @@ const CLIENT_STATUS_SCRIPT = """
         const viewportTop = viewport ? viewport.offsetTop : 0;
         const offsetX = viewportLeft + Math.max(0, (viewportWidth - renderedWidth) / 2);
         const offsetY = viewportTop + Math.max(0, (viewportHeight - renderedHeight) / 2);
+        layoutScale = scale;
         page.style.transform = "translate3d(" + offsetX + "px," + offsetY + "px,0) scale(" + scale + ")";
     };
     const scheduleFit = () => {
@@ -896,6 +914,16 @@ const CLIENT_STATUS_SCRIPT = """
         layoutObserver.observe(document.body);
     }
     setTimeout(fitLayout, 250);
+
+    for (const eventName of [
+        "mousemove", "mousedown", "mouseup", "pointerdown", "pointermove",
+        "pointerup", "pointercancel", "wheel"
+    ]) {
+        document.addEventListener(eventName, syncWGLPointerScale, {
+            capture: true,
+            passive: true,
+        });
+    }
 
     const showDiagnostic = detail => {
         let box = document.getElementById("photoelectric-diagnostic");

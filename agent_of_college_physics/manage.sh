@@ -25,6 +25,14 @@ export PHYSICS_ELECTRON_EM_PORT="${PHYSICS_ELECTRON_EM_PORT:-9386}"
 export PHYSICS_ELECTRON_EM_UPSTREAM="${PHYSICS_ELECTRON_EM_UPSTREAM:-http://127.0.0.1:$PHYSICS_ELECTRON_EM_PORT}"
 export PHYSICS_PHOTOELECTRIC_PORT="${PHYSICS_PHOTOELECTRIC_PORT:-9387}"
 export PHYSICS_PHOTOELECTRIC_UPSTREAM="${PHYSICS_PHOTOELECTRIC_UPSTREAM:-http://127.0.0.1:$PHYSICS_PHOTOELECTRIC_PORT}"
+export PHYSICS_BIPRISM_PORT="${PHYSICS_BIPRISM_PORT:-9388}"
+export PHYSICS_BIPRISM_UPSTREAM="${PHYSICS_BIPRISM_UPSTREAM:-http://127.0.0.1:$PHYSICS_BIPRISM_PORT}"
+export PHYSICS_NEWTON_RINGS_PORT="${PHYSICS_NEWTON_RINGS_PORT:-9389}"
+export PHYSICS_NEWTON_RINGS_UPSTREAM="${PHYSICS_NEWTON_RINGS_UPSTREAM:-http://127.0.0.1:$PHYSICS_NEWTON_RINGS_PORT}"
+export PHYSICS_YOUNG_MODULUS_PORT="${PHYSICS_YOUNG_MODULUS_PORT:-9390}"
+export PHYSICS_YOUNG_MODULUS_UPSTREAM="${PHYSICS_YOUNG_MODULUS_UPSTREAM:-http://127.0.0.1:$PHYSICS_YOUNG_MODULUS_PORT}"
+export PHYSICS_ROTATIONAL_INERTIA_PORT="${PHYSICS_ROTATIONAL_INERTIA_PORT:-9391}"
+export PHYSICS_ROTATIONAL_INERTIA_UPSTREAM="${PHYSICS_ROTATIONAL_INERTIA_UPSTREAM:-http://127.0.0.1:$PHYSICS_ROTATIONAL_INERTIA_PORT}"
 export PHYSICS_CJK_FONT="${PHYSICS_CJK_FONT:-$RUNTIME_ROOT/fonts/NotoSansCJKsc-Regular.otf}"
 export PHYSICS_ASR_MODEL_DIR="${PHYSICS_ASR_MODEL_DIR:-$RUNTIME_ROOT/models/paraformer-zh-streaming}"
 if [[ "$PHYSICS_ASR_MODEL_DIR" != /* ]]; then
@@ -244,7 +252,7 @@ experiment_pids() {
     pid="${proc_dir##*/}"
     command="$(tr '\0' ' ' <"$proc_dir/cmdline" 2>/dev/null || true)"
     case "$command" in
-      *"$APP_ROOT/agnet/experiments/lissajous/web.jl"*|*"$APP_ROOT/agnet/experiments/sound_speed/web.jl"*|*"$APP_ROOT/agnet/experiments/electron_em/web.jl"*|*"$APP_ROOT/agnet/experiments/photoelectric/web.jl"*)
+      *"$APP_ROOT/agnet/experiments/lissajous/web.jl"*|*"$APP_ROOT/agnet/experiments/sound_speed/web.jl"*|*"$APP_ROOT/agnet/experiments/electron_em/web.jl"*|*"$APP_ROOT/agnet/experiments/photoelectric/web.jl"*|*"$APP_ROOT/agnet/experiments/biprism/web.jl"*|*"$APP_ROOT/agnet/experiments/newton_rings/web.jl"*|*"$APP_ROOT/agnet/experiments/young_modulus/web.jl"*|*"$APP_ROOT/agnet/experiments/rotational_inertia/web.jl"*)
         printf '%s\n' "$pid"
         ;;
     esac
@@ -325,6 +333,74 @@ check_all() {
     echo "photoelectric: 直接与 8501 代理健康检查通过"
   else
     echo "photoelectric: 按需服务尚未启动（首次打开光电效应页面后再检查）"
+  fi
+  local biprism_health
+  if biprism_health="$(curl --fail --silent --max-time 2 \
+      "http://127.0.0.1:$PHYSICS_BIPRISM_PORT/__physics_health__")"; then
+    [[ "$biprism_health" == *"physics-experiment:biprism"* ]] || {
+      echo "双棱镜实验健康标识不匹配。" >&2
+      return 1
+    }
+    biprism_health="$(curl --fail --silent --show-error \
+      http://127.0.0.1:8501/experiments/biprism/__physics_health__)"
+    [[ "$biprism_health" == *"physics-experiment:biprism"* ]] || {
+      echo "双棱镜实验的 8501 代理健康标识不匹配。" >&2
+      return 1
+    }
+    echo "biprism: 直接与 8501 代理健康检查通过"
+  else
+    echo "biprism: 按需服务尚未启动（首次打开双棱镜页面后再检查）"
+  fi
+  local newton_rings_health
+  if newton_rings_health="$(curl --fail --silent --max-time 2 \
+      "http://127.0.0.1:$PHYSICS_NEWTON_RINGS_PORT/__physics_health__")"; then
+    [[ "$newton_rings_health" == *"physics-experiment:newton-rings"* ]] || {
+      echo "牛顿环实验健康标识不匹配。" >&2
+      return 1
+    }
+    newton_rings_health="$(curl --fail --silent --show-error \
+      http://127.0.0.1:8501/experiments/newton-rings/__physics_health__)"
+    [[ "$newton_rings_health" == *"physics-experiment:newton-rings"* ]] || {
+      echo "牛顿环实验的 8501 代理健康标识不匹配。" >&2
+      return 1
+    }
+    echo "newton_rings: 直接与 8501 代理健康检查通过"
+  else
+    echo "newton_rings: 按需服务尚未启动（首次打开牛顿环页面后再检查）"
+  fi
+  local young_modulus_health
+  if young_modulus_health="$(curl --fail --silent --max-time 2 \
+      "http://127.0.0.1:$PHYSICS_YOUNG_MODULUS_PORT/__physics_health__")"; then
+    [[ "$young_modulus_health" == *"physics-experiment:young-modulus"* ]] || {
+      echo "杨氏模量实验健康标识不匹配。" >&2
+      return 1
+    }
+    young_modulus_health="$(curl --fail --silent --show-error \
+      http://127.0.0.1:8501/experiments/young-modulus/__physics_health__)"
+    [[ "$young_modulus_health" == *"physics-experiment:young-modulus"* ]] || {
+      echo "杨氏模量实验的 8501 代理健康标识不匹配。" >&2
+      return 1
+    }
+    echo "young_modulus: 直接与 8501 代理健康检查通过"
+  else
+    echo "young_modulus: 按需服务尚未启动（首次打开杨氏模量页面后再检查）"
+  fi
+  local rotational_inertia_health
+  if rotational_inertia_health="$(curl --fail --silent --max-time 2 \
+      "http://127.0.0.1:$PHYSICS_ROTATIONAL_INERTIA_PORT/__physics_health__")"; then
+    [[ "$rotational_inertia_health" == *"physics-experiment:rotational-inertia"* ]] || {
+      echo "转动惯量实验健康标识不匹配。" >&2
+      return 1
+    }
+    rotational_inertia_health="$(curl --fail --silent --show-error \
+      http://127.0.0.1:8501/experiments/rotational-inertia/__physics_health__)"
+    [[ "$rotational_inertia_health" == *"physics-experiment:rotational-inertia"* ]] || {
+      echo "转动惯量实验的 8501 代理健康标识不匹配。" >&2
+      return 1
+    }
+    echo "rotational_inertia: 直接与 8501 代理健康检查通过"
+  else
+    echo "rotational_inertia: 按需服务尚未启动（首次打开转动惯量页面后再检查）"
   fi
   if [[ -n "$PHYSICS_GATEWAY_HTTPS_PORT" ]]; then
     curl --insecure --fail --silent --show-error \

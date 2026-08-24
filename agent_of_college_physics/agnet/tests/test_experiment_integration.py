@@ -156,6 +156,30 @@ class ElectronEmExperimentIntegrationTests(unittest.TestCase):
         )
         self.assertNotIn("Math.max(300, document.documentElement.clientHeight", source)
 
+    def test_electron_css_scale_is_applied_to_wgl_pointer_coordinates(self):
+        source = self._electron_source()
+
+        self.assertIn("const syncWGLPointerScale = event =>", source)
+        self.assertIn("event.target instanceof HTMLCanvasElement", source)
+        self.assertIn("canvas.wglmakie_screen", source)
+        self.assertIn("screen.__physicsBaseWinscale = screen.winscale", source)
+        self.assertIn("screen.winscale = baseWinscale * layoutScale", source)
+        self.assertRegex(
+            source,
+            r"layoutScale\s*=\s*scale;\s*page\.style\.transform",
+        )
+        for event_name in ("mousemove", "mousedown", "pointerdown", "pointermove"):
+            self.assertIn(f'"{event_name}"', source)
+        self.assertRegex(source, r"capture:\s*true")
+        restore_delay = re.search(
+            r"__physicsPointerScaleTimer\s*=\s*window\.setTimeout\(\(\)\s*=>\s*\{"
+            r".*?screen\.winscale\s*=\s*baseWinscale;.*?\},\s*(\d+)\s*\);",
+            source,
+            re.S,
+        )
+        self.assertIsNotNone(restore_delay)
+        self.assertGreaterEqual(int(restore_delay.group(1)), 80)
+
     def test_electron_layout_reserves_space_below_controls_and_detail(self):
         source = self._electron_source()
         figure_height = self._julia_int_constant(source, "FIGURE_HEIGHT")

@@ -1,0 +1,116 @@
+[
+  {
+    "source": "牛顿环可视化实验方案.md",
+    "source_path": "教学素材/物理实验/牛顿环/牛顿环可视化实验方案.md",
+    "source_type": "markdown",
+    "chunks": 22
+  },
+  {
+    "source": "README.md",
+    "source_path": "教学素材/物理实验/牛顿环/ref/README.md",
+    "source_type": "markdown",
+    "chunks": 17
+  },
+  {
+    "source": "牛顿环文献导读.md",
+    "source_path": "教学素材/物理实验/牛顿环/ref/牛顿环文献导读.md",
+    "source_type": "markdown",
+    "chunks": 11
+  },
+  {
+    "source": "College_of_San_Mateo_Physics270_Lab09_Newtons_Rings.pdf",
+    "source_path": "教学素材/物理实验/牛顿环/ref/College_of_San_Mateo_Physics270_Lab09_Newtons_Rings.pdf",
+    "source_type": "pdf",
+    "url": "https://collegeofsanmateo.edu/physics/docs/physics270/lab09.pdf",
+    "bytes": 219817,
+    "sha256": "908919728bc5f5b392ba04e42ab1f9e25a58d175822bf5bd5c76e280e649a470",
+    "pdf_signature": "%PDF-",
+    "pages": 4,
+    "selected_pages": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "empty_pages": [],
+    "text_layer_pages": 4,
+    "chunks": 15,
+    "ocr_recommended": false,
+    "note": "公开高校实验讲义；年份未在正文中明确署出。"
+  },
+  {
+    "source": "MSU_PHY431_2019_Interference_Fringes_Newton_Rings.pdf",
+    "source_path": "教学素材/物理实验/牛顿环/ref/MSU_PHY431_2019_Interference_Fringes_Newton_Rings.pdf",
+    "source_type": "pdf",
+    "url": "https://web.pa.msu.edu/courses/2019spring/PHY431/Lab6-Interference%20Fringes%2C%20Newton%20Rings.pdf",
+    "bytes": 148089,
+    "sha256": "0134edc069f362e0cf4a943a803fbf32f534fa488eef065b3a131ee08fa34c5d",
+    "pdf_signature": "%PDF-",
+    "pages": 4,
+    "selected_pages": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "empty_pages": [],
+    "text_layer_pages": 4,
+    "chunks": 11,
+    "ocr_recommended": false,
+    "note": "密歇根州立大学 2019 Spring 课程归档。"
+  },
+  {
+    "source": "PHYWE_P2220203_Newtons_Rings_Digital_Camera.pdf",
+    "source_path": "教学素材/物理实验/牛顿环/ref/PHYWE_P2220203_Newtons_Rings_Digital_Camera.pdf",
+    "source_type": "pdf",
+    "url": "https://phywe-itemservice.s3.eu-central-1.amazonaws.com/sites/DMS-Phywe/PROD/de-DE/item/phy_itemtestinstruction/P2/P2220203/P2220203_en.pdf",
+    "bytes": 1064572,
+    "sha256": "0980f899206a30bacdb5d4709b65107bf8753e7a579281ca4d2776940042535c",
+    "pdf_signature": "%PDF-",
+    "pages": 10,
+    "selected_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10
+    ],
+    "empty_pages": [],
+    "text_layer_pages": 10,
+    "chunks": 18,
+    "ocr_recommended": false,
+    "note": "PHYWE P2220203 原厂实验说明；正文未明确署出版年。"
+  },
+  {
+    "source": "IGNOU_BPHCL-138_Waves_and_Optics_Laboratory_2022.pdf",
+    "source_path": "教学素材/物理实验/双棱镜干涉测波长/ref/IGNOU_BPHCL-138_Waves_and_Optics_Laboratory_2022.pdf",
+    "source_type": "pdf",
+    "url": "https://www.egyankosh.ac.in/bitstream/123456789/82374/3/BPHCL-138%28English%29%20%281%29.pdf",
+    "bytes": 17648269,
+    "sha256": "6993096a73097c9811f97857c113361a4648807e5f41c70bf4a404bb06d0753d",
+    "pdf_signature": "%PDF-",
+    "pages": 112,
+    "selected_pages": [
+      57,
+      58,
+      59,
+      60,
+      61,
+      62,
+      63,
+      64,
+      65,
+      66
+    ],
+    "empty_pages": [],
+    "text_layer_pages": 10,
+    "chunks": 33,
+    "ocr_recommended": false,
+    "note": "只导入 Newton's Rings 章节（PDF 实际第 57–66 页）；复用仓库既有 PDF，不重复保存。"
+  }
+]

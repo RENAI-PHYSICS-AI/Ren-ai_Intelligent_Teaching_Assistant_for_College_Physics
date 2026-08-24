@@ -1,0 +1,200 @@
+[
+  {
+    "source": "杨氏模量可视化实验方案.md",
+    "source_path": "教学素材/物理实验/杨氏模量测定/杨氏模量可视化实验方案.md",
+    "source_type": "markdown",
+    "chunks": 16
+  },
+  {
+    "source": "杨氏模量文献导读.md",
+    "source_path": "教学素材/物理实验/杨氏模量测定/杨氏模量文献导读.md",
+    "source_type": "markdown",
+    "chunks": 23
+  },
+  {
+    "source": "README.md",
+    "source_path": "教学素材/物理实验/杨氏模量测定/ref/README.md",
+    "source_type": "markdown",
+    "chunks": 21
+  },
+  {
+    "source": "Harbin_Engineering_University_Wire_Youngs_Modulus_Optical_Lever.pdf",
+    "source_path": "教学素材/物理实验/杨氏模量测定/ref/Harbin_Engineering_University_Wire_Youngs_Modulus_Optical_Lever.pdf",
+    "source_type": "pdf",
+    "url": "https://pec.hrbeu.edu.cn/_upload/article/files/3b/db/205fd41048199668119d23837cde/2519c877-3e53-44df-80e4-df0c25eb21f7.pdf",
+    "bytes": 516906,
+    "sha256": "c077d323970a1da7f24a681da8c7296fc7dfae7fab017a21911ee11864d29b42",
+    "pdf_signature": "%PDF-",
+    "pages": 8,
+    "selected_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "empty_pages": [
+      6
+    ],
+    "text_layer_pages": 7,
+    "chunks": 11,
+    "ocr_recommended": true
+  },
+  {
+    "source": "Shandong_University_Metal_Wire_Youngs_Modulus.pdf",
+    "source_path": "教学素材/物理实验/杨氏模量测定/ref/Shandong_University_Metal_Wire_Youngs_Modulus.pdf",
+    "source_type": "pdf",
+    "url": "https://www.phylab.sdu.edu.cn/shiyansanjinshusiyangshidanxingmoliangdeceding-.pdf",
+    "bytes": 512680,
+    "sha256": "72ac4270ca7738249be6f5a06a1baddcb4088738d9f5613f880f79d418c6ebf3",
+    "pdf_signature": "%PDF-",
+    "pages": 7,
+    "selected_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "empty_pages": [],
+    "text_layer_pages": 7,
+    "chunks": 10,
+    "ocr_recommended": false
+  },
+  {
+    "source": "York_College_CUNY_Lab10_Youngs_Modulus.pdf",
+    "source_path": "教学素材/物理实验/杨氏模量测定/ref/York_College_CUNY_Lab10_Youngs_Modulus.pdf",
+    "source_type": "pdf",
+    "url": "https://www.york.cuny.edu/earth-physical-sciences/physics-lab-manuals/physics-i/lab-10/@@download/file",
+    "bytes": 3172585,
+    "sha256": "87cd8e1f463dd96e89c07b9318369a093c90ecef68e3cd6e25807c0c3d790ec1",
+    "pdf_signature": "%PDF-",
+    "pages": 9,
+    "selected_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "empty_pages": [],
+    "text_layer_pages": 9,
+    "chunks": 17,
+    "ocr_recommended": false
+  },
+  {
+    "source": "McMurry_University_Lab5_1_Youngs_Modulus.pdf",
+    "source_path": "教学素材/物理实验/杨氏模量测定/ref/McMurry_University_Lab5_1_Youngs_Modulus.pdf",
+    "source_type": "pdf",
+    "url": "https://mail.mcm.edu/~bykov.tikhon/phys2510/lab/Lab5-1.pdf",
+    "bytes": 98432,
+    "sha256": "03424377061acf51b3a0fb02cc7cfd5d485f0d760cfe15d791208da137188828",
+    "pdf_signature": "%PDF-",
+    "pages": 2,
+    "selected_pages": [
+      1,
+      2
+    ],
+    "empty_pages": [],
+    "text_layer_pages": 2,
+    "chunks": 4,
+    "ocr_recommended": false
+  },
+  {
+    "source": "Experimental_Science_Technology_2016_Length_Instruments_Youngs_Modulus.pdf",
+    "source_path": "教学素材/物理实验/杨氏模量测定/ref/Experimental_Science_Technology_2016_Length_Instruments_Youngs_Modulus.pdf",
+    "source_type": "pdf",
+    "url": "https://www.sy.uestc.edu.cn/cn/article/pdf/preview/10.3969/j.issn.1672-4550.2016.01.008.pdf",
+    "bytes": 1194160,
+    "sha256": "0c536cf7be104a8f746b601ebb3add5867ba5f83980ce36ca9e3938d670b7797",
+    "pdf_signature": "%PDF-",
+    "pages": 3,
+    "selected_pages": [
+      1,
+      2,
+      3
+    ],
+    "empty_pages": [],
+    "text_layer_pages": 3,
+    "chunks": 9,
+    "ocr_recommended": false
+  },
+  {
+    "source": "JCGM_100_2008_GUM.pdf",
+    "source_path": "教学素材/物理实验/杨氏模量测定/ref/JCGM_100_2008_GUM.pdf",
+    "source_type": "pdf",
+    "url": "https://www.bipm.org/documents/20126/2071204/JCGM1002008E.pdf/cb0ef43f-baa5-11cf-3f85-4dcd86f77bd6",
+    "bytes": 1888806,
+    "sha256": "41bbf068fbc0d7986c98691b2d1af6680cb3044f6a1a89b3560933ed9ef9626c",
+    "pdf_signature": "%PDF-",
+    "pages": 134,
+    "selected_pages": [
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40
+    ],
+    "empty_pages": [],
+    "text_layer_pages": 24,
+    "chunks": 153,
+    "ocr_recommended": false
+  },
+  {
+    "source": "NIST_TN1297_Uncertainty.pdf",
+    "source_path": "教学素材/物理实验/杨氏模量测定/ref/NIST_TN1297_Uncertainty.pdf",
+    "source_type": "pdf",
+    "url": "https://nvlpubs.nist.gov/nistpubs/Legacy/TN/nbstechnicalnote1297.pdf",
+    "bytes": 435960,
+    "sha256": "f2c8e6026d5589a63d492f192b72cd905f554b477a6049532256170aec477e92",
+    "pdf_signature": "%PDF-",
+    "pages": 25,
+    "selected_pages": [
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16
+    ],
+    "empty_pages": [],
+    "text_layer_pages": 13,
+    "chunks": 90,
+    "ocr_recommended": false
+  }
+]

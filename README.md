@@ -15,7 +15,7 @@
 - 流式讲解：支持连续对话、LaTeX 公式和回答位置跟随。
 - 安全可视化：模型生成结构化绘图规范，由本地校验后使用 Plotly 渲染。
 - 双学习模式：在侧栏切换“智能助教”和“可视化实验”。
-- 交互实验：内置李萨如图形、声速测量、电子荷质比和光电效应四套 Julia/WGLMakie 实验。
+- 交互实验：Windows 主项目内置李萨如图形、声速测量、电子荷质比、光电效应、双棱镜干涉测波长、牛顿环、杨氏模量和转动惯量测定八套 Julia/WGLMakie 实验。
 - 用户系统：支持注册登录、匿名进入、历史恢复、按问答轮次删除及 Markdown 导出；未回答问题也可单独删除。
 - 管理后台：支持身份名册、学习活动、反馈和运行错误统计。
 - 主题与快捷操作：支持亮色、暗色、跟随系统以及随机快速提问。
@@ -37,7 +37,11 @@
 | 李萨如专题文本块 | 10,122 |
 | 声速专题文本块 | 4,047 |
 | 光电效应专题文本块 | 301 |
-| 合计文本块 | 51,779 |
+| 双棱镜干涉专题文本块 | 517 |
+| 牛顿环专题文本块 | 113 |
+| 杨氏模量专题文本块 | 354 |
+| 转动惯量专题文本块 | 285 |
+| 合计文本块 | 53,048 |
 
 其中包括 114 个 PDF、145 个 PPT/PPTX/PPTM/POT 和 389 个 DOC/DOCX 文件。检索使用本地 BM25，并对中文文本加入相邻双字切分。教材正文优先，习题解答次之，其他教学资料和实验知识作为补充。
 
@@ -68,7 +72,7 @@ flowchart LR
     J --> K[Plotly 图表或动画演示]
     E --> L[(SQLite 用户、历史与学情数据)]
     M[管理员后台] --> L
-    E --> N[李萨如、声速、电子荷质比与光电效应实验]
+    E --> N[李萨如、声速、电子荷质比、光电效应、双棱镜、牛顿环、杨氏模量与转动惯量实验]
 ```
 
 一次普通问答会经历以下过程：
@@ -98,7 +102,7 @@ flowchart LR
 │  ├─ voice_input.py        # 浏览器录音与流式转写组件
 │  ├─ asr_service.py        # Paraformer 内部 WebSocket 服务
 │  ├─ download_asr_model.py # 固定版本 INT8 模型下载与校验
-│  ├─ experiments/          # 四套 Julia/WGLMakie 实验
+│  ├─ experiments/          # 八套 Julia/WGLMakie 实验
 │  ├─ storage.py            # 用户、会话和 Markdown 导出
 │  ├─ analytics_db.py       # 学情与反馈数据
 │  ├─ admin_api.py          # 管理员后台
@@ -150,7 +154,7 @@ Windows 版端口：
 | Streamlit 内部服务 | 仅监听本机 |
 | 管理员内部服务 | 仅监听本机 |
 | Paraformer 语音服务 | `127.0.0.1:8604`，由 `8501/asr/...` 代理 |
-| 李萨如、声速、电子荷质比与光电效应实验 | 仅监听本机，通过 `8501/experiments/...` 内嵌 |
+| 八套可视化实验 | 仅监听本机，通过 `8501/experiments/...` 内嵌 |
 
 ### 模型及管理员配置
 
@@ -225,13 +229,13 @@ Windows 与 Rocky 版本均已配置并启用 Tavily Search API 联网补充。�
 .\agnet\enable_lan.ps1
 ```
 
-脚本只为专用网络开放统一入口 `8501`。管理员页面和四套可视化实验均从主站内嵌访问，不再单独开放端口。其他设备访问 `http://Windows主机IP:8501`。
+脚本只为专用网络开放统一入口 `8501`。管理员页面和八套可视化实验均从主站内嵌访问，不再单独开放端口。其他设备访问 `http://Windows主机IP:8501`。
 
 > Edge/Chrome 只允许安全来源调用麦克风。`http://localhost:8501` 可录音，但其他电脑通过普通 HTTP IP 地址访问时，语音按钮会提示需要 HTTPS；正式局域网语音输入应在统一入口配置客户端信任的 HTTPS 证书，WebSocket 会自动使用 WSS。
 
 ## Rocky Linux 10 独立版
 
-Rocky 版已包含应用、知识库、原始教学素材、四套实验以及迁移时的用户和历史数据。它只安装在复制后的普通用户目录中：
+Rocky 版已包含应用、知识库、已整理教学素材与八套实验；用户、历史和其他运行数据仅可按受控流程另行迁移，不包含在公开源码中。它只安装在复制后的普通用户目录中：
 
 - 不允许使用 `sudo` 或 root 执行；
 - 不写入 `/opt`、`/etc`、`/var` 或 `/usr/local`；
@@ -264,7 +268,7 @@ bash install.sh
 PHYSICS_PUBLIC_BASE_URL=https://192.168.222.147:1234/agent
 ```
 
-该值用于让四套可视化实验、Paraformer 语音服务、持久登录和管理员页面正确生成带 `/agent/` 前缀的 HTTPS/WSS 地址，并校验浏览器看到的公开端口。项目自带的 `8443` HTTPS 网关只作为独立部署时的备用方案，当前未对校园网络开放。详细要求见 [Rocky 部署说明](agent_of_college_physics/README.md)。
+该值用于让八套可视化实验、Paraformer 语音服务、持久登录和管理员页面正确生成带 `/agent/` 前缀的 HTTPS/WSS 地址，并校验浏览器看到的公开端口。项目自带的 `8443` HTTPS 网关只作为独立部署时的备用方案，当前未对校园网络开放。详细要求见 [Rocky 部署说明](agent_of_college_physics/README.md)。
 
 ### 服务管理
 
@@ -290,7 +294,7 @@ Rocky 版使用目录内的 Python 网关提供内部 HTTP 上游，当前由学
 | Streamlit 内部服务 | `127.0.0.1:8502` |
 | 管理员内部服务 | `127.0.0.1:8603` |
 | Paraformer 语音服务 | `127.0.0.1:8604`，仅由统一入口代理 |
-| 李萨如、声速、电子荷质比与光电效应实验 | 仅监听 `127.0.0.1`，由统一入口代理 |
+| 八套可视化实验 | 分别使用 `9384`–`9391`，仅监听 `127.0.0.1`，由统一入口代理 |
 
 安装脚本不会修改防火墙。当前校园网络只需访问已有的 TCP `1234` HTTPS 反向代理；不要向校园网络开放 `8501`、`8443`、Streamlit、管理员、ASR 或实验内部端口。
 
@@ -368,7 +372,13 @@ cd ~/agent_of_college_physics
 - `imports/electron_em.jsonl`：电子荷质比、圆轨道法、磁聚焦、亥姆霍兹线圈与汤姆孙法专题知识；
 - `imports/photoelectric.jsonl`：光电效应、伏安特性、红限、普朗克常量拟合和遏止电压判读专题知识；
 - `imports/lissajous.jsonl`：李萨如实验专题知识；
-- `imports/sound_speed.jsonl`：声速测量专题知识。
+- `imports/sound_speed.jsonl`：声速测量专题知识；
+- `imports/biprism.jsonl`：双棱镜分波阵面、钠黄光条纹、二次成像测虚光源间距及波长不确定度专题知识。
+- `imports/newton_rings.jsonl`：牛顿环等厚干涉、半波损失、读数显微镜、逐差法、曲率半径线性拟合与不确定度专题知识。
+- `imports/young_modulus.jsonl`：金属丝静态拉伸、光杠杆放大、加载与卸载、力—伸长拟合、杨氏模量与不确定度专题知识。
+- `imports/rotational_inertia.jsonl`：扭摆、三线摆、平行轴定理、复摆周期拟合、转动惯量与不确定度专题知识。
+
+转动惯量专题的可视化方案、约 10 篇核心参考题录和 8 份本地核验 PDF 位于 `教学素材/物理实验/转动惯量测定/`。单独更新该专题时先运行 `agnet/build_rotational_inertia_import.py`，再用下述合并命令刷新主知识库。
 
 若只更新了专题索引，Windows 可运行：
 
@@ -386,8 +396,12 @@ cd ~/agent_of_college_physics
 - 声速测量：回声法、双麦克风时差法、示波器相位差法和驻波法。
 - 电子荷质比：电子束圆轨道、亥姆霍兹磁场标定、纵向磁聚焦和汤姆孙交叉电磁场。
 - 光电效应：伏安特性与光强、普朗克常量拟合、红限与量子规律、遏止电压判读与系统误差。
+- 双棱镜干涉测钠黄光波长：分波阵面与虚光源、钠黄光干涉条纹、凸透镜二次成像测间距、波长拟合与不确定度。
+- 牛顿环等厚干涉：半波损失与环纹形成、读数显微镜单向扫描、15 级逐差法、直径平方线性拟合与不确定度。
+- 杨氏模量测定：光杠杆微小伸长放大、加载与卸载读数、力—伸长线性拟合、杨氏模量与不确定度。
+- 转动惯量测定：扭摆法、三线摆法、平行轴定理验证，以及摆动周期拟合与不确定度。
 
-四类实验均拆分为四个独立页面，只构建和加载当前选中的页面：李萨如为 `/phase`、`/amplitude`、`/ratio`、`/detune`；声速为 `/echo`、`/dual`、`/phase`、`/standing`；电子荷质比为 `/circular`、`/helmholtz`、`/focus`、`/thomson`；光电效应为 `/iv`、`/planck`、`/threshold`、`/uncertainty`。
+八类实验均拆分为四个独立页面，只构建和加载当前选中的页面：李萨如为 `/phase`、`/amplitude`、`/ratio`、`/detune`；声速为 `/echo`、`/dual`、`/phase`、`/standing`；电子荷质比为 `/circular`、`/helmholtz`、`/focus`、`/thomson`；光电效应为 `/iv`、`/planck`、`/threshold`、`/uncertainty`；双棱镜为 `/geometry`、`/fringes`、`/separation`、`/wavelength`；牛顿环为 `/formation`、`/measurement`、`/difference`、`/fit`；杨氏模量为 `/principle`、`/loading`、`/fit`、`/uncertainty`；转动惯量为 `/torsion`、`/trifilar`、`/parallel-axis`、`/pendulum-fit`。双棱镜和牛顿环均以 `589.3 nm` 钠黄光为教学参考值。
 
 实验按需启动，主要图形在客户端浏览器通过 WebGL2 渲染。Windows 首次使用前可手动初始化：
 
@@ -397,9 +411,15 @@ julia --project=experiments/lissajous -e "using Pkg; Pkg.instantiate(); Pkg.prec
 julia --project=experiments/sound_speed -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
 julia --project=experiments/electron_em -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
 julia --project=experiments/photoelectric -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
+julia --project=experiments/biprism -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
+julia --project=experiments/newton_rings -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
+julia --project=experiments/young_modulus -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
+julia --project=experiments/rotational_inertia -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
 ```
 
-Rocky 的 `install.sh` 默认完成相同的初始化；可用 `PRECOMPILE_EXPERIMENTS=0 bash install.sh` 暂时跳过。
+实验依赖清单按 Julia 1.10.10 生成。若 Juliaup 的全局默认版本较新，项目启动器会优先使用本机已安装的 `+1.10.10` 通道而不修改全局默认值；也可用 `PHYSICS_JULIA_EXE` 指定可执行文件，或用 `PHYSICS_JULIA_CHANNEL` 指定 Juliaup 通道。
+
+当前 Rocky 目录已同步全部八套实验；转动惯量测定使用 `9391` 回环端口，通过 `/experiments/rotational-inertia` 代理四个独立页面。所有实验只使用独立回环端口，并由启动器统一完成依赖预编译、自检、进程停止和健康检查。
 
 ## 对话内可视化
 

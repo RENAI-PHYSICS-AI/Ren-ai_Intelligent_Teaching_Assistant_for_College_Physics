@@ -1,5 +1,5 @@
 {
-  "chunks": 51779,
+  "chunks": 53048,
   "files_scanned": 668,
   "failures": [],
   "by_type": {
@@ -37,13 +37,32 @@
     "imported_electron_em_invalid": 0,
     "imported_photoelectric_chunks": 301,
     "imported_photoelectric_duplicates": 0,
-    "imported_photoelectric_invalid": 0
+    "imported_photoelectric_invalid": 0,
+    "imported_biprism_chunks": 517,
+    "imported_biprism_duplicates": 1,
+    "imported_biprism_invalid": 0,
+    "imported_newton_rings_chunks": 113,
+    "imported_newton_rings_duplicates": 14,
+    "imported_newton_rings_invalid": 0,
+    "imported_young_modulus_chunks": 354,
+    "imported_young_modulus_duplicates": 0,
+    "imported_young_modulus_invalid": 0,
+    "imported_rotational_inertia_chunks": 285,
+    "imported_rotational_inertia_duplicates": 0,
+    "imported_rotational_inertia_invalid": 0
   },
   "primary_textbook": "教学素材/教材/物理学  第5版 -- 祝之光 -- 2018 -- 北京_高等教育出版社.pdf",
   "primary_solution": "教学素材/教材/物理学（第五版）祝之光习题解答.pdf",
   "policy": "祝之光教材优先，教学素材全目录补充，竞赛专题知识库增强",
   "base_chunks": 35973,
   "imported_knowledge_bases": [
+    {
+      "collection": "双棱镜干涉测波长实验",
+      "file": "biprism.jsonl",
+      "chunks": 517,
+      "duplicates_skipped": 1,
+      "invalid_skipped": 0
+    },
     {
       "collection": "电子荷质比实验",
       "file": "electron_em.jsonl",
@@ -59,9 +78,23 @@
       "invalid_skipped": 38
     },
     {
+      "collection": "牛顿环等厚干涉实验",
+      "file": "newton_rings.jsonl",
+      "chunks": 113,
+      "duplicates_skipped": 14,
+      "invalid_skipped": 0
+    },
+    {
       "collection": "光电效应实验",
       "file": "photoelectric.jsonl",
       "chunks": 301,
+      "duplicates_skipped": 0,
+      "invalid_skipped": 0
+    },
+    {
+      "collection": "转动惯量测定实验",
+      "file": "rotational_inertia.jsonl",
+      "chunks": 285,
       "duplicates_skipped": 0,
       "invalid_skipped": 0
     },
@@ -71,6 +104,13 @@
       "chunks": 4047,
       "duplicates_skipped": 8,
       "invalid_skipped": 4
+    },
+    {
+      "collection": "杨氏模量测定实验",
+      "file": "young_modulus.jsonl",
+      "chunks": 354,
+      "duplicates_skipped": 0,
+      "invalid_skipped": 0
     }
   ],
   "import_failures": []

@@ -768,6 +768,18 @@ with st.sidebar:
         if st.button("☀ 光电效应", key="sidebar_photoelectric", use_container_width=True):
             st.session_state.visual_experiment_name = "光电效应"
             st.rerun()
+        if st.button("◇ 双棱镜干涉", key="sidebar_biprism", use_container_width=True):
+            st.session_state.visual_experiment_name = "双棱镜干涉"
+            st.rerun()
+        if st.button("◎ 牛顿环", key="sidebar_newton_rings", use_container_width=True):
+            st.session_state.visual_experiment_name = "牛顿环"
+            st.rerun()
+        if st.button("↕ 杨氏模量", key="sidebar_young_modulus", use_container_width=True):
+            st.session_state.visual_experiment_name = "杨氏模量"
+            st.rerun()
+        if st.button("↻ 转动惯量", key="sidebar_rotational_inertia", use_container_width=True):
+            st.session_state.visual_experiment_name = "转动惯量"
+            st.rerun()
 
     st.divider()
     with st.expander("👤 用户与历史", expanded=False):

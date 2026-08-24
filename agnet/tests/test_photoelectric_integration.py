@@ -93,13 +93,18 @@ class PhotoelectricExperimentIntegrationTests(unittest.TestCase):
                 "http://127.0.0.1:9387/planck?attempt=42&theme=dark",
             )
 
-    def test_hub_and_sidebar_expose_the_fourth_experiment(self):
+    def test_hub_and_sidebar_keep_photoelectric_after_fifth_experiment_is_added(self):
         hub_source = self._source(APP_DIR / "experiment_hub.py")
         app_source = self._source(APP_DIR / "app.py")
-        self.assertIn(
-            '["李萨如图形", "声速测量", "电子荷质比", "光电效应"]',
-            hub_source,
-        )
+        for experiment_name in (
+            "李萨如图形",
+            "声速测量",
+            "电子荷质比",
+            "光电效应",
+            "双棱镜干涉",
+            "牛顿环",
+        ):
+            self.assertIn(f'"{experiment_name}"', hub_source)
         self.assertIn('"光电管伏安特性": "/iv"', hub_source)
         self.assertIn('"普朗克常量拟合": "/planck"', hub_source)
         self.assertIn('"截止频率与光强": "/threshold"', hub_source)
@@ -194,6 +199,30 @@ class PhotoelectricExperimentIntegrationTests(unittest.TestCase):
             r"const renderedHeight\s*=\s*\$\(FIGURE_HEIGHT\)\s*\*\s*scale;",
         )
         self.assertNotIn("Math.max(300, document.documentElement.clientHeight", source)
+
+    def test_css_scale_is_applied_to_wgl_pointer_coordinates(self):
+        source = self._photoelectric_source()
+
+        self.assertIn("const syncWGLPointerScale = event =>", source)
+        self.assertIn("event.target instanceof HTMLCanvasElement", source)
+        self.assertIn("canvas.wglmakie_screen", source)
+        self.assertIn("screen.__physicsBaseWinscale = screen.winscale", source)
+        self.assertIn("screen.winscale = baseWinscale * layoutScale", source)
+        self.assertRegex(
+            source,
+            r"layoutScale\s*=\s*scale;\s*page\.style\.transform",
+        )
+        for event_name in ("mousemove", "mousedown", "pointerdown", "pointermove"):
+            self.assertIn(f'"{event_name}"', source)
+        self.assertRegex(source, r"capture:\s*true")
+        restore_delay = re.search(
+            r"__physicsPointerScaleTimer\s*=\s*window\.setTimeout\(\(\)\s*=>\s*\{"
+            r".*?screen\.winscale\s*=\s*baseWinscale;.*?\},\s*(\d+)\s*\);",
+            source,
+            re.S,
+        )
+        self.assertIsNotNone(restore_delay)
+        self.assertGreaterEqual(int(restore_delay.group(1)), 80)
 
     def test_layout_reserves_space_below_controls_and_detail(self):
         source = self._photoelectric_source()
@@ -295,6 +324,22 @@ class PhotoelectricExperimentIntegrationTests(unittest.TestCase):
         self.assertIn("PHYSICS_PHOTOELECTRIC_PORT=9387", env_source)
         self.assertIn(
             "PHYSICS_PHOTOELECTRIC_UPSTREAM=http://127.0.0.1:9387",
+            env_source,
+        )
+        self.assertIn(
+            'PHYSICS_BIPRISM_PORT="${PHYSICS_BIPRISM_PORT:-9388}"',
+            manage_source,
+        )
+        self.assertIn("experiments/biprism/web.jl", manage_source)
+        self.assertIn("physics-experiment:biprism", manage_source)
+        self.assertIn(
+            "lissajous sound_speed electron_em photoelectric biprism",
+            install_source,
+        )
+        self.assertIn('runtime/experiments/biprism.log"', install_source)
+        self.assertIn("PHYSICS_BIPRISM_PORT=9388", env_source)
+        self.assertIn(
+            "PHYSICS_BIPRISM_UPSTREAM=http://127.0.0.1:9388",
             env_source,
         )
         self.assertTrue(

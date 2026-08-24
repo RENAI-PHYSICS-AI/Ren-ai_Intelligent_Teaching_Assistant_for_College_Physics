@@ -1,0 +1,173 @@
+[
+  {
+    "source": "转动惯量可视化实验方案.md",
+    "source_path": "教学素材/物理实验/转动惯量测定/转动惯量可视化实验方案.md",
+    "source_type": "markdown",
+    "chunks": 13
+  },
+  {
+    "source": "转动惯量文献导读.md",
+    "source_path": "教学素材/物理实验/转动惯量测定/转动惯量文献导读.md",
+    "source_type": "markdown",
+    "chunks": 16
+  },
+  {
+    "source": "README.md",
+    "source_path": "教学素材/物理实验/转动惯量测定/ref/README.md",
+    "source_type": "markdown",
+    "chunks": 18
+  },
+  {
+    "source": "NTHU_2022_Moments_of_Inertia.pdf",
+    "source_path": "教学素材/物理实验/转动惯量测定/ref/NTHU_2022_Moments_of_Inertia.pdf",
+    "source_type": "pdf",
+    "url": "https://www.phys.nthu.edu.tw/~gplab/file/English/Fall%20semester/Lab%2005%20Moments%20of%20Inertia_en.pdf",
+    "bytes": 906629,
+    "sha256": "f4bf470bbb6cdb70fc51143636356ce8753d2a5c298614c3e4c6d056b7ec105b",
+    "pdf_signature": "%PDF-",
+    "pages": 10,
+    "selected_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10
+    ],
+    "empty_pages": [],
+    "text_layer_pages": 10,
+    "chunks": 32,
+    "ocr_recommended": false
+  },
+  {
+    "source": "University_of_Toronto_Torsion_Pendulum_Summary.pdf",
+    "source_path": "教学素材/物理实验/转动惯量测定/ref/University_of_Toronto_Torsion_Pendulum_Summary.pdf",
+    "source_type": "pdf",
+    "url": "https://faraday.physics.utoronto.ca/IYearLab/Intros/TorsionPend/Summary/Summary.pdf",
+    "bytes": 48420,
+    "sha256": "eab988ec88b6700713875a9fe767fac05bb20f142d4de7b92935e862bd600eaf",
+    "pdf_signature": "%PDF-",
+    "pages": 6,
+    "selected_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "empty_pages": [],
+    "text_layer_pages": 6,
+    "chunks": 11,
+    "ocr_recommended": false
+  },
+  {
+    "source": "WWU_Torsion_Pendulum.pdf",
+    "source_path": "教学素材/物理实验/转动惯量测定/ref/WWU_Torsion_Pendulum.pdf",
+    "source_type": "pdf",
+    "url": "https://physics.wwu.edu/sites/physics.wwu.edu/files/2020-08/Torsion%20Pendulum%20.pdf",
+    "bytes": 252872,
+    "sha256": "036b22c3c3686172cbfd03def7e5ec933aabe110b530baf5a533ef55d3d8a8bb",
+    "pdf_signature": "%PDF-",
+    "pages": 4,
+    "selected_pages": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "empty_pages": [],
+    "text_layer_pages": 4,
+    "chunks": 5,
+    "ocr_recommended": false
+  },
+  {
+    "source": "Meywerk_Hellberg_2024_Trifilar_Nonlinearities.pdf",
+    "source_path": "教学素材/物理实验/转动惯量测定/ref/Meywerk_Hellberg_2024_Trifilar_Nonlinearities.pdf",
+    "source_type": "pdf",
+    "url": "https://doi.org/10.24352/UB.OVGU-2024-059",
+    "bytes": 3589260,
+    "sha256": "5728a5189363f91944eaf130daea41ee9a2c89f588149036e64a868ec438f69c",
+    "pdf_signature": "%PDF-",
+    "pages": 12,
+    "selected_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "empty_pages": [],
+    "text_layer_pages": 12,
+    "chunks": 70,
+    "ocr_recommended": false
+  },
+  {
+    "source": "Blanes_et_al_2022_Inertial_Properties_Padel_Racket.pdf",
+    "source_path": "教学素材/物理实验/转动惯量测定/ref/Blanes_et_al_2022_Inertial_Properties_Padel_Racket.pdf",
+    "source_type": "pdf",
+    "url": "https://doi.org/10.3390/s22239266",
+    "bytes": 1504119,
+    "sha256": "521e7db5b4386e22197f012936314515aee025ec1b5d435c3e58877014a0ae81",
+    "pdf_signature": "%PDF-",
+    "pages": 22,
+    "selected_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22
+    ],
+    "empty_pages": [],
+    "text_layer_pages": 22,
+    "chunks": 108,
+    "ocr_recommended": false
+  },
+  {
+    "source": "Yu_Ying_2016_Trifilar_Period_Count.pdf",
+    "source_path": "教学素材/物理实验/转动惯量测定/ref/Yu_Ying_2016_Trifilar_Period_Count.pdf",
+    "source_type": "pdf",
+    "url": "https://doi.org/10.3969/j.issn.1672-4550.2016.05.007",
+    "bytes": 1972485,
+    "sha256": "993f02e20abd7a79814e4620e4f7e934dca40b710a8ae5dd3a268546140b0897",
+    "pdf_signature": "%PDF-",
+    "pages": 3,
+    "selected_pages": [
+      1,
+      2,
+      3
+    ],
+    "empty_pages": [],
+    "text_layer_pages": 3,
+    "chunks": 12,
+    "ocr_recommended": false
+  }
+]

@@ -110,9 +110,86 @@ PHOTOELECTRIC = ExperimentService(
     height=740,
 )
 
+BIPRISM = ExperimentService(
+    key="biprism",
+    title="双棱镜干涉测钠黄光波长",
+    project_dir=EXPERIMENT_ROOT / "biprism",
+    web_path=EXPERIMENT_ROOT / "biprism" / "web.jl",
+    port_env="PHYSICS_BIPRISM_PORT",
+    default_port=9388,
+    julia_host_env="BIPRISM_WEB_HOST",
+    julia_port_env="BIPRISM_WEB_PORT",
+    julia_proxy_env="BIPRISM_WEB_PROXY_URL",
+    ready_event="biprism-wgl-ready",
+    failed_event="biprism-wgl-failed",
+    identity_marker="physics-experiment:biprism",
+    root_marker="双棱镜干涉",
+    height=740,
+)
+
+NEWTON_RINGS = ExperimentService(
+    key="newton_rings",
+    title="牛顿环等厚干涉实验",
+    project_dir=EXPERIMENT_ROOT / "newton_rings",
+    web_path=EXPERIMENT_ROOT / "newton_rings" / "web.jl",
+    port_env="PHYSICS_NEWTON_RINGS_PORT",
+    default_port=9389,
+    julia_host_env="NEWTON_RINGS_WEB_HOST",
+    julia_port_env="NEWTON_RINGS_WEB_PORT",
+    julia_proxy_env="NEWTON_RINGS_WEB_PROXY_URL",
+    ready_event="newton-rings-wgl-ready",
+    failed_event="newton-rings-wgl-failed",
+    identity_marker="physics-experiment:newton-rings",
+    root_marker="牛顿环",
+    height=740,
+)
+
+YOUNG_MODULUS = ExperimentService(
+    key="young_modulus",
+    title="杨氏模量测定实验",
+    project_dir=EXPERIMENT_ROOT / "young_modulus",
+    web_path=EXPERIMENT_ROOT / "young_modulus" / "web.jl",
+    port_env="PHYSICS_YOUNG_MODULUS_PORT",
+    default_port=9390,
+    julia_host_env="YOUNG_MODULUS_WEB_HOST",
+    julia_port_env="YOUNG_MODULUS_WEB_PORT",
+    julia_proxy_env="YOUNG_MODULUS_WEB_PROXY_URL",
+    ready_event="young-modulus-wgl-ready",
+    failed_event="young-modulus-wgl-failed",
+    identity_marker="physics-experiment:young-modulus",
+    root_marker="杨氏模量",
+    height=740,
+)
+
+ROTATIONAL_INERTIA = ExperimentService(
+    key="rotational_inertia",
+    title="转动惯量测定实验",
+    project_dir=EXPERIMENT_ROOT / "rotational_inertia",
+    web_path=EXPERIMENT_ROOT / "rotational_inertia" / "web.jl",
+    port_env="PHYSICS_ROTATIONAL_INERTIA_PORT",
+    default_port=9391,
+    julia_host_env="ROTATIONAL_INERTIA_WEB_HOST",
+    julia_port_env="ROTATIONAL_INERTIA_WEB_PORT",
+    julia_proxy_env="ROTATIONAL_INERTIA_WEB_PROXY_URL",
+    ready_event="rotational-inertia-wgl-ready",
+    failed_event="rotational-inertia-wgl-failed",
+    identity_marker="physics-experiment:rotational-inertia",
+    root_marker="转动惯量",
+    height=740,
+)
+
 SERVICES = {
     service.key: service
-    for service in (LISSAJOUS, SOUND_SPEED, ELECTRON_EM, PHOTOELECTRIC)
+    for service in (
+        LISSAJOUS,
+        SOUND_SPEED,
+        ELECTRON_EM,
+        PHOTOELECTRIC,
+        BIPRISM,
+        NEWTON_RINGS,
+        YOUNG_MODULUS,
+        ROTATIONAL_INERTIA,
+    )
 }
 _processes: dict[str, subprocess.Popen] = {}
 _logs: dict[str, IO[str]] = {}
@@ -183,11 +260,39 @@ def service_ready(service: ExperimentService, timeout: float = 0.45) -> bool:
 
 
 def _julia_command(service: ExperimentService) -> list[str]:
-    julia = os.getenv("PHYSICS_JULIA_EXE", "").strip() or shutil.which("julia")
+    configured = os.getenv("PHYSICS_JULIA_EXE", "").strip()
+    julia = configured or shutil.which("julia")
     if not julia:
         raise FileNotFoundError("未找到 Julia。请先安装 Julia 1.10，并确认 julia 命令可用。")
+
+    prefix = [julia]
+    channel = os.getenv("PHYSICS_JULIA_CHANNEL", "").strip().lstrip("+")
+    if not configured and channel:
+        prefix.append(f"+{channel}")
+    elif not configured:
+        # Juliaup may point the bare `julia` launcher at a newer release even
+        # though the experiment manifests are resolved for Julia 1.10.10.
+        # Prefer the already-installed compatible channel without changing
+        # the user's global Juliaup default.  A standalone Julia executable
+        # simply rejects this probe and falls back to its normal invocation.
+        try:
+            probe = subprocess.run(
+                [julia, "+1.10.10", "--version"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=8,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            version_text = f"{probe.stdout}\n{probe.stderr}".lower()
+            if probe.returncode == 0 and "julia version 1.10." in version_text:
+                prefix.append("+1.10.10")
+        except (OSError, subprocess.SubprocessError):
+            pass
+
     command = [
-        julia,
+        *prefix,
         f"--project={service.project_dir}",
         str(service.web_path),
     ]
@@ -340,7 +445,16 @@ def render_experiment_hub() -> None:
         st.session_state.visual_experiment_name = "李萨如图形"
     selected = st.segmented_control(
         "选择实验",
-        ["李萨如图形", "声速测量", "电子荷质比", "光电效应"],
+        [
+            "李萨如图形",
+            "声速测量",
+            "电子荷质比",
+            "光电效应",
+            "双棱镜干涉",
+            "牛顿环",
+            "杨氏模量",
+            "转动惯量",
+        ],
         key="visual_experiment_name",
         width="stretch",
     ) or "李萨如图形"
@@ -432,7 +546,7 @@ def render_experiment_hub() -> None:
             routes[experiment_name],
             f"电子荷质比 · {experiment_name}",
         )
-    else:
+    elif selected == "光电效应":
         st.markdown(
             """
             <div class="experiment-summary">
@@ -460,6 +574,122 @@ def render_experiment_hub() -> None:
             PHOTOELECTRIC,
             routes[experiment_name],
             f"光电效应 · {experiment_name}",
+        )
+    elif selected == "双棱镜干涉":
+        st.markdown(
+            """
+            <div class="experiment-summary">
+              <h3>◇ 双棱镜干涉测钠黄光波长</h3>
+              <p>依次研究分波阵面与虚光源、干涉条纹宽度、凸透镜二次成像，以及钠黄光波长拟合与不确定度。</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        routes = {
+            "分波阵面与虚光源": "/geometry",
+            "钠黄光干涉条纹": "/fringes",
+            "二次成像测间距": "/separation",
+            "波长拟合与误差": "/wavelength",
+        }
+        if "biprism_experiment_name" not in st.session_state:
+            st.session_state.biprism_experiment_name = "分波阵面与虚光源"
+        experiment_name = st.segmented_control(
+            "实验项目",
+            list(routes),
+            key="biprism_experiment_name",
+            width="stretch",
+        ) or "分波阵面与虚光源"
+        _start_and_render(
+            BIPRISM,
+            routes[experiment_name],
+            f"双棱镜干涉 · {experiment_name}",
+        )
+    elif selected == "牛顿环":
+        st.markdown(
+            """
+            <div class="experiment-summary">
+              <h3>◎ 牛顿环等厚干涉实验</h3>
+              <p>使用 589.3 nm 钠黄光，依次研究半波损失与环纹形成、读数显微镜单向扫描、15 级逐差法，以及直径平方线性拟合与不确定度。</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        routes = {
+            "等厚干涉与环纹": "/formation",
+            "读数显微镜测量": "/measurement",
+            "逐差法求曲率半径": "/difference",
+            "线性拟合与误差": "/fit",
+        }
+        if "newton_rings_experiment_name" not in st.session_state:
+            st.session_state.newton_rings_experiment_name = "等厚干涉与环纹"
+        experiment_name = st.segmented_control(
+            "实验项目",
+            list(routes),
+            key="newton_rings_experiment_name",
+            width="stretch",
+        ) or "等厚干涉与环纹"
+        _start_and_render(
+            NEWTON_RINGS,
+            routes[experiment_name],
+            f"牛顿环 · {experiment_name}",
+        )
+    elif selected == "杨氏模量":
+        st.markdown(
+            """
+            <div class="experiment-summary">
+              <h3>↕ 杨氏模量测定实验</h3>
+              <p>采用金属丝静态拉伸与光杠杆放大，依次研究微小伸长测量、加载与卸载、力—伸长线性拟合，以及杨氏模量和不确定度。</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        routes = {
+            "光杠杆放大原理": "/principle",
+            "加载与卸载读数": "/loading",
+            "力—伸长线性拟合": "/fit",
+            "模量与不确定度": "/uncertainty",
+        }
+        if "young_modulus_experiment_name" not in st.session_state:
+            st.session_state.young_modulus_experiment_name = "光杠杆放大原理"
+        experiment_name = st.segmented_control(
+            "实验项目",
+            list(routes),
+            key="young_modulus_experiment_name",
+            width="stretch",
+        ) or "光杠杆放大原理"
+        _start_and_render(
+            YOUNG_MODULUS,
+            routes[experiment_name],
+            f"杨氏模量 · {experiment_name}",
+        )
+    else:
+        st.markdown(
+            """
+            <div class="experiment-summary">
+              <h3>↻ 转动惯量测定实验</h3>
+              <p>分别研究扭摆法、三线摆法、平行轴定理验证，以及转动惯量的线性拟合和不确定度评定。</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        routes = {
+            "扭摆法测转动惯量": "/torsion",
+            "三线摆法测转动惯量": "/trifilar",
+            "平行轴定理验证": "/parallel-axis",
+            "摆动周期拟合与不确定度": "/pendulum-fit",
+        }
+        if "rotational_inertia_experiment_name" not in st.session_state:
+            st.session_state.rotational_inertia_experiment_name = "扭摆法测转动惯量"
+        experiment_name = st.segmented_control(
+            "实验项目",
+            list(routes),
+            key="rotational_inertia_experiment_name",
+            width="stretch",
+        ) or "扭摆法测转动惯量"
+        _start_and_render(
+            ROTATIONAL_INERTIA,
+            routes[experiment_name],
+            f"转动惯量 · {experiment_name}",
         )
 
 

@@ -33,6 +33,18 @@ EXPERIMENT_UPSTREAMS = {
     "/experiments/photoelectric": os.getenv(
         "PHYSICS_PHOTOELECTRIC_UPSTREAM", "http://127.0.0.1:9387"
     ),
+    "/experiments/biprism": os.getenv(
+        "PHYSICS_BIPRISM_UPSTREAM", "http://127.0.0.1:9388"
+    ),
+    "/experiments/newton-rings": os.getenv(
+        "PHYSICS_NEWTON_RINGS_UPSTREAM", "http://127.0.0.1:9389"
+    ),
+    "/experiments/young-modulus": os.getenv(
+        "PHYSICS_YOUNG_MODULUS_UPSTREAM", "http://127.0.0.1:9390"
+    ),
+    "/experiments/rotational-inertia": os.getenv(
+        "PHYSICS_ROTATIONAL_INERTIA_UPSTREAM", "http://127.0.0.1:9391"
+    ),
 }
 ADMIN_PATHS = {
     "/admin-login",

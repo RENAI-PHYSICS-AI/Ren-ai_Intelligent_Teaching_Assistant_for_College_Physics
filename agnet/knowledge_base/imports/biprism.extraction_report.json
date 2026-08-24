@@ -1,0 +1,21 @@
+[
+  {
+    "source": "IGNOU_BPHCL-138_Waves_and_Optics_Laboratory_2022.pdf",
+    "pages": 112,
+    "chunks": 407,
+    "empty_pages": [
+      2,
+      111
+    ],
+    "ocr_recommended": false
+  },
+  {
+    "source": "KU_LH-9_Fresnel_Biprism.pdf",
+    "pages": 1,
+    "chunks": 1,
+    "empty_pages": [
+      1
+    ],
+    "ocr_recommended": true
+  }
+]

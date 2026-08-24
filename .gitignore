@@ -26,6 +26,8 @@ agent_of_college_physics/.runtime/
 # 实验原始参考文献仅供本地抽取；仓库保留说明与脱敏后的知识库索引
 教学素材/物理实验/**/ref/*
 !教学素材/物理实验/**/ref/README.md
+agent_of_college_physics/教学素材/物理实验/**/ref/*
+!agent_of_college_physics/教学素材/物理实验/**/ref/README.md
 # LaTeX 中间文件
 *.aux
 *.bbl

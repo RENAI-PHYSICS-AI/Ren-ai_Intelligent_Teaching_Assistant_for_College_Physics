@@ -1,0 +1,14 @@
+{
+  "created_at": "2026-08-24T16:38:39.519621+08:00",
+  "documents": 7,
+  "markdown_documents": 5,
+  "pdf_documents": 2,
+  "chunks": 518,
+  "features": 60000,
+  "chunk_size": 760,
+  "chunk_overlap": 120,
+  "retrieval": "character TF-IDF + BM25",
+  "ocr_recommended_documents": [
+    "KU_LH-9_Fresnel_Biprism.pdf"
+  ]
+}
