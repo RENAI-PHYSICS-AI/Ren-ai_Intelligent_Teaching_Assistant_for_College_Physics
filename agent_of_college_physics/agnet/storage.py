@@ -170,6 +170,42 @@ def _deserialize_images(raw: str, include_data: bool = True) -> list[dict]:
     return images
 
 
+def image_data_url(image: dict) -> str:
+    """Return a self-contained raster image URL for proxy-safe chat rendering."""
+    data = image.get("data", b"")
+    if isinstance(data, str):
+        if data.startswith("data:"):
+            header, separator, encoded = data.partition(",")
+            if (not separator or header not in {
+                "data:image/png;base64", "data:image/jpeg;base64",
+                "data:image/webp;base64",
+            }):
+                return ""
+            data = encoded
+        try:
+            raw = base64.b64decode(data, validate=True)
+        except (ValueError, TypeError):
+            return ""
+    else:
+        try:
+            raw = bytes(data)
+        except (TypeError, ValueError):
+            return ""
+    if not raw or len(raw) > 20 * 1024**2:
+        return ""
+
+    if raw.startswith(b"\x89PNG\r\n\x1a\n"):
+        mime = "image/png"
+    elif raw.startswith(b"\xff\xd8\xff"):
+        mime = "image/jpeg"
+    elif len(raw) >= 12 and raw[:4] == b"RIFF" and raw[8:12] == b"WEBP":
+        mime = "image/webp"
+    else:
+        return ""
+    encoded = base64.b64encode(raw).decode("ascii")
+    return f"data:{mime};base64,{encoded}"
+
+
 def save_message(user_id: int, message: dict) -> int:
     with _connect() as connection:
         cursor = connection.execute(

@@ -51,7 +51,7 @@
 - 用户目录至少预留 8 GB 空间；
 - 系统已有 `curl`、`tar`、`gzip`、`sha256sum`、`awk`；启用项目 HTTPS 时还需要 `openssl`；
 - 安装阶段能访问 uv、Python 包源、Julia 官方下载站、GitHub 的 Noto CJK 字体源和 Hugging Face 模型仓库；
-- 本机已安装 LM Studio CLI；`manage.sh` 会自动检查并常驻加载 `glm47-local-prod` 与 `qwen-vl30-local-prod`。
+- 本机已安装 LM Studio CLI；`manage.sh` 会自动检查并常驻加载 `mimo-vl-local-prod`。
 
 系统缺少基础命令时，安装器只报告缺项，不会自行调用 dnf 或修改系统。
 
@@ -153,18 +153,23 @@ bash manage.sh restart
 
 ```ini
 PHYSICS_BASE_URL=http://127.0.0.1:1235/v1
-PHYSICS_MODEL=glm47-local-prod
-PHYSICS_VISION_MODEL=qwen-vl30-local-prod
-PHYSICS_CONTEXT_WINDOW=8192
+PHYSICS_MODEL=mimo-vl-local-prod
+PHYSICS_VISION_MODEL=mimo-vl-local-prod
+PHYSICS_CONTEXT_WINDOW=128000
 PHYSICS_HISTORY_MAX_MESSAGES=4
-PHYSICS_MAX_OUTPUT_TOKENS=1024
+PHYSICS_MAX_OUTPUT_TOKENS=4096
 KB_CONTEXT_MAX_CHARS=2500
-PHYSICS_VISION_MAX_OUTPUT_TOKENS=1024
-PHYSICS_CHAT_MODEL_KEY=zai-org/glm-4.7-flash
-PHYSICS_CHAT_MODEL_IDENTIFIER=glm47-local-prod
-PHYSICS_VISION_MODEL_KEY=qwen/qwen3-vl-30b
-PHYSICS_VISION_MODEL_IDENTIFIER=qwen-vl30-local-prod
-PHYSICS_CHAT_NO_THINK_SUFFIX=/nothink
+PHYSICS_VISION_MAX_OUTPUT_TOKENS=2048
+PHYSICS_VISION_TIMEOUT_SECONDS=360
+PHYSICS_CHAT_MODEL_KEY=xiaomi-mimo-vl-miloco-7b
+PHYSICS_CHAT_MODEL_IDENTIFIER=mimo-vl-local-prod
+PHYSICS_CHAT_MODEL_CONTEXT=128000
+PHYSICS_CHAT_MODEL_PARALLEL=4
+PHYSICS_VISION_MODEL_KEY=xiaomi-mimo-vl-miloco-7b
+PHYSICS_VISION_MODEL_IDENTIFIER=mimo-vl-local-prod
+PHYSICS_VISION_MODEL_CONTEXT=128000
+PHYSICS_VISION_MODEL_PARALLEL=4
+PHYSICS_CHAT_NO_THINK_SUFFIX=/no_think
 PHYSICS_VISION_NO_THINK_SUFFIX=/no_think
 PHYSICS_API_KEY=
 ADMIN_LOGIN_URL=/admin-login
@@ -194,9 +199,9 @@ PHYSICS_ROTATIONAL_INERTIA_PORT=9391
 PHYSICS_ROTATIONAL_INERTIA_UPSTREAM=http://127.0.0.1:9391
 ```
 
-当前对话和最终答案使用学校 Rocky 服务器 `tjracphy` 本机的 GLM-4.7-Flash，生产 API 标识为 `glm47-local-prod`；图片先由本机 Qwen3-VL-30B-A3B-Instruct 识别，生产 API 标识为 `qwen-vl30-local-prod`，识别文本再交给 GLM 结合知识库组织答案。`manage.sh start/restart` 会检查两个模型的本机设备标识、8K 上下文和4个并行槽；缺少时自动加载，加载命令不设置 TTL，因此空闲时不会自动卸载。服务器或 LM Studio 重启后再次执行 `bash manage.sh start` 即可恢复双模型常驻。
+当前对话、识图和最终答案统一使用学校 Rocky 服务器 `tjracphy` 本机的 MiMo VL Miloco 7B，生产 API 标识为 `mimo-vl-local-prod`。图片先由该模型识别，识别文本再交给同一模型结合知识库组织答案。`manage.sh start/restart` 会检查模型的本机设备标识、128K 上下文和4个并行槽；缺少时自动加载，加载命令不设置 TTL，因此空闲时不会自动卸载。服务器或 LM Studio 重启后再次执行 `bash manage.sh start` 即可恢复模型常驻。
 
-当前 Rocky 与 Windows 版本均已配置并启用 Tavily Search API 联网补充。普通教材概念、公式推导和计算题不会联网；问题明确要求联网，或包含“最新、近期、目前、进展、现行标准”等时效性表达时才触发。应用只发送当前问题文本，不发送用户身份、历史记录或图片。结果经过清洗后作为不可信参考交给 GLM，并在答案末尾附真实来源链接；搜索失败会自动退回本地知识库，相同问题默认缓存 30 分钟。Rocky 密钥保存在 `config/physics-assistant.env`，Windows 密钥保存在 `.streamlit/secrets.toml`，两者都不得提交到 Git。
+当前 Rocky 与 Windows 版本均已配置并启用 Tavily Search API 联网补充。普通教材概念、公式推导和计算题不会联网；问题明确要求联网，或包含“最新、近期、目前、进展、现行标准”等时效性表达时才触发。应用只发送当前问题文本，不发送用户身份、历史记录或图片。结果经过清洗后作为不可信参考交给 MiMo-VL，并在答案末尾附真实来源链接；搜索失败会自动退回本地知识库，相同问题默认缓存 30 分钟。Rocky 密钥保存在 `config/physics-assistant.env`，Windows 密钥保存在 `.streamlit/secrets.toml`，两者都不得提交到 Git。
 
 注册用户登录后由 `/session-login` 换取服务器签名的 HttpOnly Cookie；刷新页面会重新核验数据库中的账号状态并恢复登录，默认有效期为 7 天。HTTPS 入口会为 Cookie 自动增加 `Secure` 属性，退出登录通过 `/session-logout` 清除 Cookie；`PHYSICS_USER_SESSION_SECONDS` 可在 1 小时至 30 天范围内调整。
 

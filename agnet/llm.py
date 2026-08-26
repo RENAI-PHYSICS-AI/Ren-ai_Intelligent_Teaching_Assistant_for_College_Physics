@@ -30,12 +30,12 @@ SYSTEM_PROMPT = """你是“大学物理智能助教”。课程依据祝之光�
    - animation：使用 parameter、min、max；每条 series 使用 x_expression、y_expression，应用会生成带播放按钮的运动动画。可用 output_format 指定 interactive、gif、mp4 或 both。
    - data：每条 series 使用等长数值数组 x、y。
    表达式只允许数字、变量、pi、e、+ - * / ** 和 sin/cos/tan/exp/log/log10/sqrt/abs。最多生成3张图，每张最多6条曲线。不要在正文另写可视化代码，应用会自动生成并运行安全代码演示。
-10. 图片问题会附带独立视觉模型的识别结果。应忠实使用其中明确识别的文字、数值、坐标和高亮状态；如果识别结果内部矛盾，应说明不确定性，不得用界面位置或常见题型自行改写已经明确的“选中/高亮”结论。
+10. 图片问题会附带视觉识别阶段的结果。应忠实使用其中明确识别的文字、数值、坐标和高亮状态；如果识别结果内部矛盾，应说明不确定性，不得用界面位置或常见题型自行改写已经明确的“选中/高亮”结论。
 11. 普通问答应简洁完整，通常控制在 600～800 个中文字符内；只有学生明确要求详细推导、长文说明或多题解答时才适当展开，避免重复题意和同义结论。
 12. 需要说明知识来源时统一表述为“依据知识库”。不要称“您提供的教材资料”“您上传的资料”或“课堂讨论内容”，因为这些资料由系统知识库提供，并非当前学生临时提供。
 """
 
-VISION_SYSTEM_PROMPT = """你是大学物理助教的图像信息提取模块。你的输出会交给另一个模型组织最终答案。
+VISION_SYSTEM_PROMPT = """你是大学物理助教的图像信息提取模块。你的输出会进入后续阶段组织最终答案。
 要求：
 1. 只提取图片中实际可见的信息，不直接回答学生问题，不补写图片中没有的条件。
 2. 优先识别题干、公式、数值、单位、坐标轴、图例、受力方向、电路连接、实验仪器和手写标注。
@@ -94,7 +94,7 @@ def _history_for_context(history: list[dict], current_content: str | list[dict])
     """Keep as many recent complete turns as fit in the configured context window."""
     context_window = _int_setting("PHYSICS_CONTEXT_WINDOW", 8192, 4096, 262144)
     output_reserve = _int_setting(
-        "PHYSICS_MAX_OUTPUT_TOKENS", 1024, 512, max(512, context_window // 2)
+        "PHYSICS_MAX_OUTPUT_TOKENS", 4096, 512, max(512, context_window // 2)
     )
     # Two recent complete turns are normally enough for pronouns and follow-up
     # questions. Keeping this default small materially reduces CPU prompt eval
@@ -168,6 +168,37 @@ def _visible_text(chunks: Iterator[str]) -> Iterator[str]:
         yield "模型完成了推理，但没有返回可显示的回答。"
 
 
+def _trim_longest_exact_overlap(previous: str, continuation: str,
+                                maximum: int = 256, minimum: int = 8) -> str:
+    """Remove only an exact repeated boundary when a continuation restarts."""
+    upper = min(len(previous), len(continuation), maximum)
+    for size in range(upper, minimum - 1, -1):
+        if previous[-size:] == continuation[:size]:
+            return continuation[size:]
+    return continuation
+
+
+def _deduplicated_continuation(chunks: Iterator[str], previous: str,
+                               probe_size: int = 256) -> Iterator[str]:
+    """Buffer a short continuation prefix so repeated boundary text is hidden."""
+    probe = ""
+    released = False
+    for piece in chunks:
+        if released:
+            yield piece
+            continue
+        probe += piece
+        if len(probe) >= probe_size:
+            trimmed = _trim_longest_exact_overlap(previous, probe, probe_size)
+            if trimmed:
+                yield trimmed
+            released = True
+    if not released and probe:
+        trimmed = _trim_longest_exact_overlap(previous, probe, probe_size)
+        if trimmed:
+            yield trimmed
+
+
 def _user_content(question: str, context: str, image_description: str = "",
                   web_context: str = "") -> str:
     sections = [f"知识库检索结果：\n{context}"]
@@ -182,7 +213,7 @@ def _user_content(question: str, context: str, image_description: str = "",
             f"应指出不确定性）：\n{image_description}"
         )
     sections.append(f"学生问题：{question}")
-    suffix = setting("PHYSICS_CHAT_NO_THINK_SUFFIX", "/nothink").strip()
+    suffix = setting("PHYSICS_CHAT_NO_THINK_SUFFIX", "/no_think").strip()
     if suffix:
         sections.append(suffix)
     return "\n\n".join(sections)
@@ -203,7 +234,7 @@ def _vision_content(question: str, images: list[dict]) -> list[dict]:
             "type": "image_url",
             "image_url": {"url": f"data:{mime};base64,{encoded}"},
         })
-    # Qwen-VL only disables thinking reliably when /no_think is the final
+    # MiMo-VL only disables thinking reliably when /no_think is the final
     # text item after all image items in the OpenAI-compatible message.
     suffix = setting("PHYSICS_VISION_NO_THINK_SUFFIX", "/no_think").strip()
     if suffix:
@@ -213,7 +244,7 @@ def _vision_content(question: str, images: list[dict]) -> list[dict]:
 
 def _recognize_images(question: str, images: list[dict], base_url: str,
                       headers: dict[str, str], verify: bool | str) -> str:
-    model = setting("PHYSICS_VISION_MODEL", "qwen/qwen3-vl-30b").strip()
+    model = setting("PHYSICS_VISION_MODEL", "mimo-vl-local-prod").strip()
     if not model:
         raise RuntimeError("尚未配置图片识别模型 PHYSICS_VISION_MODEL")
     payload = {
@@ -223,20 +254,21 @@ def _recognize_images(question: str, images: list[dict], base_url: str,
             {"role": "user", "content": _vision_content(question, images)},
         ],
         "temperature": 0,
-        "max_tokens": _int_setting("PHYSICS_VISION_MAX_OUTPUT_TOKENS", 1024, 256, 4096),
+        "max_tokens": _int_setting("PHYSICS_VISION_MAX_OUTPUT_TOKENS", 2048, 256, 4096),
         "stream": False,
         "reasoning_effort": "none",
     }
+    timeout_seconds = _int_setting("PHYSICS_VISION_TIMEOUT_SECONDS", 360, 30, 900)
     response = requests.post(
         f"{base_url}/chat/completions", headers=headers, json=payload,
-        timeout=(15, 180), verify=verify,
+        timeout=(15, timeout_seconds), verify=verify,
     )
     if response.status_code in {400, 404, 422}:
         response.close()
         payload.pop("reasoning_effort", None)
         response = requests.post(
             f"{base_url}/chat/completions", headers=headers, json=payload,
-            timeout=(15, 180), verify=verify,
+            timeout=(15, timeout_seconds), verify=verify,
         )
     with response:
         response.raise_for_status()
@@ -253,7 +285,7 @@ def stream_answer(question: str, context: str, history: list[dict],
     api_key = setting("PHYSICS_API_KEY") or setting("DASHSCOPE_API_KEY")
     configured_base = setting("PHYSICS_BASE_URL")
     base_url = (configured_base or "https://dashscope.aliyuncs.com/compatible-mode/v1").rstrip("/")
-    model = setting("PHYSICS_MODEL", "qwen-plus")
+    model = setting("PHYSICS_MODEL", "mimo-vl-local-prod")
     # LAN OpenAI-compatible services may intentionally run without authentication.
     if not api_key and not configured_base:
         yield fallback_answer(question, context)
@@ -271,31 +303,45 @@ def stream_answer(question: str, context: str, history: list[dict],
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     messages.extend(_history_for_context(history, current_content))
     messages.append({"role": "user", "content": current_content})
+    max_output_tokens = _int_setting(
+        "PHYSICS_MAX_OUTPUT_TOKENS", 4096, 512, 32768
+    )
     payload = {
         "model": model,
         "messages": messages,
         "temperature": 0.2,
-        "max_tokens": _int_setting("PHYSICS_MAX_OUTPUT_TOKENS", 1024, 512, 32768),
+        "max_tokens": max_output_tokens,
         "stream": True,
         "reasoning_effort": "none",
     }
-    response = requests.post(
-        f"{base_url}/chat/completions", headers=headers, json=payload,
-        timeout=(15, 180), stream=True, verify=verify,
-    )
-    if response.status_code in {400, 404, 422}:
-        response.close()
-        payload.pop("reasoning_effort", None)
+
+    def post_completion(request_payload: dict) -> requests.Response:
         response = requests.post(
-            f"{base_url}/chat/completions", headers=headers, json=payload,
+            f"{base_url}/chat/completions", headers=headers, json=request_payload,
             timeout=(15, 180), stream=True, verify=verify,
         )
-    with response:
-        response.raise_for_status()
+        if response.status_code in {400, 404, 422}:
+            response.close()
+            retry_payload = dict(request_payload)
+            retry_payload.pop("reasoning_effort", None)
+            response = requests.post(
+                f"{base_url}/chat/completions", headers=headers, json=retry_payload,
+                timeout=(15, 180), stream=True, verify=verify,
+            )
+        return response
+
+    def response_chunks(response: requests.Response,
+                        finish_state: dict[str, str | None]) -> Iterator[str]:
         content_type = response.headers.get("content-type", "").lower()
         if "text/event-stream" not in content_type:
             data = response.json()
-            yield from _visible_text(iter([data["choices"][0]["message"].get("content", "")]))
+            choices = data.get("choices") or []
+            if not choices:
+                return
+            choice = choices[0]
+            finish_state["reason"] = choice.get("finish_reason")
+            message = choice.get("message") or {}
+            yield from _visible_text(iter([message.get("content", "")]))
             return
 
         def raw_chunks() -> Iterator[str]:
@@ -311,13 +357,59 @@ def stream_answer(question: str, context: str, history: list[dict],
                     data = json.loads(line)
                     choices = data.get("choices") or []
                     if choices:
-                        content = (choices[0].get("delta") or {}).get("content")
+                        choice = choices[0]
+                        reason = choice.get("finish_reason")
+                        if reason is not None:
+                            finish_state["reason"] = reason
+                        content = (choice.get("delta") or {}).get("content")
                         if content:
                             yield content
                 except (json.JSONDecodeError, TypeError, KeyError):
                     continue
 
         yield from _visible_text(raw_chunks())
+
+    visible_parts: list[str] = []
+    request_messages = messages
+    for attempt in range(2):
+        request_payload = {**payload, "messages": request_messages}
+        if attempt:
+            request_payload["temperature"] = 0
+        response = post_completion(request_payload)
+        finish_state: dict[str, str | None] = {"reason": None}
+        attempt_parts: list[str] = []
+        with response:
+            response.raise_for_status()
+            chunks: Iterator[str] = response_chunks(response, finish_state)
+            if attempt:
+                chunks = _deduplicated_continuation(
+                    chunks, "".join(visible_parts)
+                )
+            for piece in chunks:
+                attempt_parts.append(piece)
+                yield piece
+        visible_parts.extend(attempt_parts)
+        if finish_state["reason"] not in {"length", "max_tokens"}:
+            return
+        if attempt:
+            yield (
+                "\n\n> 回答再次达到输出上限。请回复“继续”，"
+                "我会从中断处完成剩余内容。"
+            )
+            return
+        continuation_prompt = (
+            "上一条回答因长度限制中断。请从最后一个字符之后直接续写，"
+            "不要重复已有内容；若末尾位于代码块、公式或 JSON 内，"
+            "先补全当前表达式和闭合结构，再完成余下回答。"
+        )
+        suffix = setting("PHYSICS_CHAT_NO_THINK_SUFFIX", "/no_think").strip()
+        if suffix:
+            continuation_prompt = f"{continuation_prompt}\n\n{suffix}"
+        request_messages = [
+            *messages,
+            {"role": "assistant", "content": "".join(visible_parts)},
+            {"role": "user", "content": continuation_prompt},
+        ]
 
 
 def answer(question: str, context: str, history: list[dict],
@@ -379,10 +471,14 @@ def plan_visualization(question: str, answer_text: str) -> list[dict]:
     if not configured_base and not api_key:
         return []
     base_url = (configured_base or "https://dashscope.aliyuncs.com/compatible-mode/v1").rstrip("/")
-    model = setting("PHYSICS_MODEL", "qwen-plus")
+    model = setting("PHYSICS_MODEL", "mimo-vl-local-prod")
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
+    user_content = f"学生问题：{question}\n\n已有回答：{answer_text[:3500]}"
+    suffix = setting("PHYSICS_CHAT_NO_THINK_SUFFIX", "/no_think").strip()
+    if suffix:
+        user_content = f"{user_content}\n\n{suffix}"
     payload = {
         "model": model,
         "messages": [
@@ -397,7 +493,7 @@ def plan_visualization(question: str, answer_text: str) -> list[dict]:
                     "sin cos tan exp log log10 sqrt abs。不要输出正文。"
                 ),
             },
-            {"role": "user", "content": f"学生问题：{question}\n\n已有回答：{answer_text[:3500]}"},
+            {"role": "user", "content": user_content},
         ],
         "temperature": 0,
         "max_tokens": 900,

@@ -40,13 +40,13 @@ if [[ "$PHYSICS_ASR_MODEL_DIR" != /* ]]; then
 fi
 export PHYSICS_ASR_PORT="${PHYSICS_ASR_PORT:-8604}"
 export PHYSICS_ASR_UPSTREAM="http://127.0.0.1:$PHYSICS_ASR_PORT"
-export PHYSICS_CHAT_MODEL_KEY="${PHYSICS_CHAT_MODEL_KEY:-zai-org/glm-4.7-flash}"
-export PHYSICS_CHAT_MODEL_IDENTIFIER="${PHYSICS_CHAT_MODEL_IDENTIFIER:-glm47-local-prod}"
-export PHYSICS_CHAT_MODEL_CONTEXT="${PHYSICS_CHAT_MODEL_CONTEXT:-8192}"
+export PHYSICS_CHAT_MODEL_KEY="${PHYSICS_CHAT_MODEL_KEY:-xiaomi-mimo-vl-miloco-7b}"
+export PHYSICS_CHAT_MODEL_IDENTIFIER="${PHYSICS_CHAT_MODEL_IDENTIFIER:-mimo-vl-local-prod}"
+export PHYSICS_CHAT_MODEL_CONTEXT="${PHYSICS_CHAT_MODEL_CONTEXT:-128000}"
 export PHYSICS_CHAT_MODEL_PARALLEL="${PHYSICS_CHAT_MODEL_PARALLEL:-4}"
-export PHYSICS_VISION_MODEL_KEY="${PHYSICS_VISION_MODEL_KEY:-qwen/qwen3-vl-30b}"
-export PHYSICS_VISION_MODEL_IDENTIFIER="${PHYSICS_VISION_MODEL_IDENTIFIER:-qwen-vl30-local-prod}"
-export PHYSICS_VISION_MODEL_CONTEXT="${PHYSICS_VISION_MODEL_CONTEXT:-8192}"
+export PHYSICS_VISION_MODEL_KEY="${PHYSICS_VISION_MODEL_KEY:-xiaomi-mimo-vl-miloco-7b}"
+export PHYSICS_VISION_MODEL_IDENTIFIER="${PHYSICS_VISION_MODEL_IDENTIFIER:-mimo-vl-local-prod}"
+export PHYSICS_VISION_MODEL_CONTEXT="${PHYSICS_VISION_MODEL_CONTEXT:-128000}"
 export PHYSICS_VISION_MODEL_PARALLEL="${PHYSICS_VISION_MODEL_PARALLEL:-4}"
 export PHYSICS_MODEL="${PHYSICS_MODEL:-$PHYSICS_CHAT_MODEL_IDENTIFIER}"
 export PHYSICS_VISION_MODEL="${PHYSICS_VISION_MODEL:-$PHYSICS_VISION_MODEL_IDENTIFIER}"
@@ -110,14 +110,21 @@ wait_https_url() {
 }
 
 local_llm_loaded() {
-  local lms_bin="$1" identifier="$2" model_key="$3" context="$4" parallel="$5" models_json
-  models_json="$("$lms_bin" ps --json 2>/dev/null)" || return 1
-  MODELS_JSON="$models_json" "$PYTHON" -c '
+  local lms_bin="$1" identifier="$2" model_key="$3" context="$4" parallel="$5"
+  local models_json attempt parse_status
+  for attempt in {1..5}; do
+    if models_json="$("$lms_bin" ps --json 2>/dev/null)"; then
+      if MODELS_JSON="$models_json" "$PYTHON" -c '
 import json
 import os
 import sys
 
-models = json.loads(os.environ.get("MODELS_JSON", "[]"))
+try:
+    models = json.loads(os.environ.get("MODELS_JSON", "[]"))
+except (json.JSONDecodeError, TypeError):
+    raise SystemExit(2)
+if not isinstance(models, list) or not all(isinstance(item, dict) for item in models):
+    raise SystemExit(2)
 identifier, model_key, context, parallel = sys.argv[1:]
 matched = any(
     item.get("identifier") == identifier
@@ -128,14 +135,22 @@ matched = any(
     for item in models
 )
 raise SystemExit(0 if matched else 1)
-' "$identifier" "$model_key" "$context" "$parallel"
+' "$identifier" "$model_key" "$context" "$parallel"; then
+        return 0
+      else
+        parse_status="$?"
+        [[ "$parse_status" -eq 1 ]] && return 1
+      fi
+    fi
+    (( attempt < 5 )) && sleep 1
+  done
+  return 1
 }
 
 ensure_one_local_llm() {
   local lms_bin="$1" label="$2" model_key="$3" identifier="$4" context="$5" parallel="$6"
   if ! local_llm_loaded "$lms_bin" "$identifier" "$model_key" "$context" "$parallel"; then
     "$lms_bin" unload "$identifier" >/dev/null 2>&1 || true
-    "$lms_bin" unload "$model_key" >/dev/null 2>&1 || true
     "$lms_bin" load "$model_key" \
       --identifier "$identifier" \
       --gpu off \
@@ -182,12 +197,21 @@ ensure_local_llms() {
     "$lms_bin" server start --port 1235 --bind 127.0.0.1 >/dev/null
     wait_url http://127.0.0.1:1235/v1/models "LM Studio 本机接口"
   fi
-  ensure_one_local_llm "$lms_bin" "本机 GLM-4.7-Flash 对话模型" \
-    "$PHYSICS_CHAT_MODEL_KEY" "$PHYSICS_CHAT_MODEL_IDENTIFIER" \
-    "$PHYSICS_CHAT_MODEL_CONTEXT" "$PHYSICS_CHAT_MODEL_PARALLEL"
-  ensure_one_local_llm "$lms_bin" "本机 Qwen3-VL-30B 图片模型" \
-    "$PHYSICS_VISION_MODEL_KEY" "$PHYSICS_VISION_MODEL_IDENTIFIER" \
-    "$PHYSICS_VISION_MODEL_CONTEXT" "$PHYSICS_VISION_MODEL_PARALLEL"
+  if [[ "$PHYSICS_CHAT_MODEL_KEY" == "$PHYSICS_VISION_MODEL_KEY" \
+        && "$PHYSICS_CHAT_MODEL_IDENTIFIER" == "$PHYSICS_VISION_MODEL_IDENTIFIER" \
+        && "$PHYSICS_CHAT_MODEL_CONTEXT" == "$PHYSICS_VISION_MODEL_CONTEXT" \
+        && "$PHYSICS_CHAT_MODEL_PARALLEL" == "$PHYSICS_VISION_MODEL_PARALLEL" ]]; then
+    ensure_one_local_llm "$lms_bin" "本机 MiMo-VL 对话与图片模型" \
+      "$PHYSICS_CHAT_MODEL_KEY" "$PHYSICS_CHAT_MODEL_IDENTIFIER" \
+      "$PHYSICS_CHAT_MODEL_CONTEXT" "$PHYSICS_CHAT_MODEL_PARALLEL"
+  else
+    ensure_one_local_llm "$lms_bin" "本机对话模型" \
+      "$PHYSICS_CHAT_MODEL_KEY" "$PHYSICS_CHAT_MODEL_IDENTIFIER" \
+      "$PHYSICS_CHAT_MODEL_CONTEXT" "$PHYSICS_CHAT_MODEL_PARALLEL"
+    ensure_one_local_llm "$lms_bin" "本机图片模型" \
+      "$PHYSICS_VISION_MODEL_KEY" "$PHYSICS_VISION_MODEL_IDENTIFIER" \
+      "$PHYSICS_VISION_MODEL_CONTEXT" "$PHYSICS_VISION_MODEL_PARALLEL"
+  fi
 }
 
 start_all() {

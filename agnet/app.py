@@ -26,6 +26,7 @@ from storage import (
     delete_answer_turn,
     delete_unanswered_question,
     init_db,
+    image_data_url,
     load_context_messages,
     load_message_images,
     load_messages,
@@ -442,7 +443,11 @@ def render_history_images(message: dict) -> None:
             return
         images = cached_images
     for image in images:
-        st.image(image["data"], caption=image.get("name"), width=360)
+        source = image_data_url(image)
+        if source:
+            st.image(source, caption=image.get("name"), width=360)
+        else:
+            st.caption(f"附图无法显示：{image.get('name', 'image.png')}")
 
 
 def render_history_visualizations(message: dict) -> None:
@@ -1063,7 +1068,11 @@ if question:
         user_message["id"] = save_message(st.session_state.user_id, user_message)
     with st.chat_message("user"):
         for image in message_images:
-            st.image(image["data"], caption=image.get("name"), width=360)
+            source = image_data_url(image)
+            if source:
+                st.image(source, caption=image.get("name"), width=360)
+            else:
+                st.caption(f"附图无法显示：{image.get('name', 'image.png')}")
         st.markdown(question)
     search_started = time.monotonic()
     results = kb.search(question, chapter=chapter, top_k=top_k)

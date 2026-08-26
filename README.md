@@ -60,9 +60,9 @@ flowchart LR
     C --> F[相关教材上下文]
     E --> G[历史消息与当前问题]
     E --> R{是否包含图片}
-    R -- 是 --> V[Qwen3-VL-30B 忠实识图]
+    R -- 是 --> V[MiMo-VL 忠实识图]
     V --> X[图片识别文本]
-    F --> H[GLM-4.7-Flash 组织最终答案]
+    F --> H[同一 MiMo-VL 组织最终答案]
     G --> H
     X --> H
     R -- 否 --> H
@@ -79,7 +79,7 @@ flowchart LR
 
 1. 从本地知识库检索与问题最相关的教材和课程内容；
 2. 若问题具有时效性或明确要求联网，由应用调用 Tavily，并把清洗后的结果作为外部参考；上传图片先由视觉模型识别，只把识别文本交给回答模型；
-3. 将知识库内容、按需联网结果、最近两轮历史和当前问题交给 GLM，以教材内容为主线组织答案；
+3. 将知识库内容、按需联网结果、最近两轮历史和当前问题交给 MiMo-VL，以教材内容为主线组织答案；
 4. 在页面中流式显示整合后的答案，并持续渲染 Markdown 与 LaTeX；
 5. 若答案包含受支持的可视化规范，则在代码之后直接生成运行演示；
 6. 注册用户的问答写入历史，反馈与错误写入学情数据库。
@@ -167,15 +167,16 @@ Copy-Item .\.streamlit\secrets.toml.example .\.streamlit\secrets.toml
 ```toml
 physics_api_key = ""
 physics_base_url = "https://192.168.222.147:1234/v1"
-physics_model = "glm47-local-prod"
-physics_vision_model = "qwen-vl30-local-prod"
-physics_vision_max_output_tokens = "1024"
-physics_chat_no_think_suffix = "/nothink"
+physics_model = "mimo-vl-local-prod"
+physics_vision_model = "mimo-vl-local-prod"
+physics_vision_max_output_tokens = "2048"
+physics_chat_no_think_suffix = "/no_think"
 physics_vision_no_think_suffix = "/no_think"
+physics_vision_timeout_seconds = "360"
 physics_ca_bundle = ".streamlit/physics-assistant-ca.crt"
-physics_context_window = "8192"
+physics_context_window = "128000"
 physics_history_max_messages = "4"
-physics_max_output_tokens = "1024"
+physics_max_output_tokens = "4096"
 kb_context_max_chars = "2500"
 
 admin_username = "admin"
@@ -185,9 +186,9 @@ admin_token = "足够长的随机令牌"
 admin_login_url = "/admin-login"
 ```
 
-当前采用本地双模型路由：普通对话和最终答案由学校 Rocky 服务器 `tjracphy` 本机的 GLM-4.7-Flash 生成，生产 API 标识为 `glm47-local-prod`；上传图片时先由本机 Qwen3-VL-30B-A3B-Instruct 提取题干、公式、图表和实验信息，生产 API 标识为 `qwen-vl30-local-prod`，随后只把识别文本交给 GLM 结合知识库组织答案。两个模型均以 8K 上下文、4 个并行槽无 TTL 常驻。Rocky 应用通过 `127.0.0.1:1235` 直连本机 LM Studio，不经过 LM Link；Windows 开发版通过服务器公开 API 入口调用同一组本地模型。
+当前统一使用学校 Rocky 服务器 `tjracphy` 本机的 MiMo VL Miloco 7B，生产 API 标识为 `mimo-vl-local-prod`。普通问题直接由该模型回答；上传图片时先由同一模型提取题干、公式、图表和实验信息，再把识别文本与知识库结果交给同一模型组织最终答案。模型以 128K 上下文、4 个并行槽、无 TTL 方式常驻。Rocky 应用通过 `127.0.0.1:1235` 直连本机 LM Studio，不经过 LM Link；Windows 开发版通过服务器公开 API 入口调用同一个 Rocky 本地实例。
 
-Windows 与 Rocky 版本均已配置并启用 Tavily Search API 联网补充。普通教材概念、公式推导和计算题不会联网；问题明确要求联网，或包含“最新、近期、目前、进展、现行标准”等时效性表达时，应用才发送当前问题文本进行搜索。搜索结果经过清洗和长度限制后作为不可信外部参考交给 GLM，并在答案末尾附真实来源链接；搜索超时、额度不足或接口故障时自动退回本地知识库。结果在进程内缓存 30 分钟，用户身份、历史记录和图片不会发送给搜索服务。
+Windows 与 Rocky 版本均已配置并启用 Tavily Search API 联网补充。普通教材概念、公式推导和计算题不会联网；问题明确要求联网，或包含“最新、近期、目前、进展、现行标准”等时效性表达时，应用才发送当前问题文本进行搜索。搜索结果经过清洗和长度限制后作为不可信外部参考交给 MiMo-VL，并在答案末尾附真实来源链接；搜索超时、额度不足或接口故障时自动退回本地知识库。结果在进程内缓存 30 分钟，用户身份、历史记录和图片不会发送给搜索服务。
 
 不要把 `secrets.toml`、API Key、密码或内网令牌提交到 Git。
 
@@ -196,11 +197,12 @@ Windows 与 Rocky 版本均已配置并启用 Tavily Search API 联网补充。�
 | 环境变量 | 用途 |
 | --- | --- |
 | `PHYSICS_BASE_URL` | OpenAI-compatible API 根地址，通常以 `/v1` 结尾 |
-| `PHYSICS_MODEL` | 对话与最终答案模型 ID，当前为 `glm47-local-prod` |
-| `PHYSICS_VISION_MODEL` | 图片识别模型 ID，当前为 `qwen-vl30-local-prod` |
-| `PHYSICS_VISION_MAX_OUTPUT_TOKENS` | 图片识别阶段最大输出 token，默认 1024 |
-| `PHYSICS_CHAT_NO_THINK_SUFFIX` | GLM 关闭思考的提示后缀，当前为 `/nothink` |
-| `PHYSICS_VISION_NO_THINK_SUFFIX` | Qwen-VL 关闭思考的提示后缀，当前为 `/no_think` |
+| `PHYSICS_MODEL` | 对话与最终答案模型 ID，当前为 `mimo-vl-local-prod` |
+| `PHYSICS_VISION_MODEL` | 图片识别模型 ID，当前同为 `mimo-vl-local-prod` |
+| `PHYSICS_VISION_MAX_OUTPUT_TOKENS` | 图片识别阶段最大输出 token，当前为 2048 |
+| `PHYSICS_CHAT_NO_THINK_SUFFIX` | MiMo-VL 对话阶段关闭思考的提示后缀，当前为 `/no_think` |
+| `PHYSICS_VISION_NO_THINK_SUFFIX` | MiMo-VL 识图阶段关闭思考的提示后缀，当前为 `/no_think` |
+| `PHYSICS_VISION_TIMEOUT_SECONDS` | 图片识别读取超时；Rocky 冷启动预热可能较慢，当前为 360 秒 |
 | `PHYSICS_CA_BUNDLE` | 可选的 HTTPS 模型服务 CA 公钥证书路径 |
 | `PHYSICS_WEB_SEARCH_PROVIDER` | 可选联网搜索提供方；设为 `tavily` 后与密钥共同启用 |
 | `TAVILY_API_KEY` | Tavily 服务密钥；Windows 保存在 `.streamlit/secrets.toml`，Rocky 保存在 `config/physics-assistant.env` |
@@ -212,7 +214,7 @@ Windows 与 Rocky 版本均已配置并启用 Tavily Search API 联网补充。�
 | `DASHSCOPE_API_KEY` | 兼容的 Qwen/DashScope 回退密钥 |
 | `PHYSICS_CONTEXT_WINDOW` | 模型上下文窗口预算 |
 | `PHYSICS_HISTORY_MAX_MESSAGES` | 单次请求最多携带的历史消息数 |
-| `PHYSICS_MAX_OUTPUT_TOKENS` | 单次回答最大输出 token 数 |
+| `PHYSICS_MAX_OUTPUT_TOKENS` | 单次回答最大输出 token 数，当前为 4096；达到上限时自动续写一次 |
 | `PHYSICS_JULIA_EXE` | Julia 可执行文件路径 |
 | `PHYSICS_CJK_FONT` | Rocky 上可选的中文字体文件 |
 | `PHYSICS_ASR_THREADS` | Paraformer 单批 CPU 推理线程数，默认 4 |
@@ -432,7 +434,7 @@ julia --project=experiments/rotational_inertia -e "using Pkg; Pkg.instantiate();
 
 回答中的可视化代码会先显示，再在其后生成运行演示窗口。项目对数学表达式、变量、函数、指数范围及数据规模进行白名单校验，不允许模型直接执行任意 Python、Shell、文件读写或网络请求。支持的输出由实际绘图规范决定，可包括交互图、静态图以及 GIF/MP4 动画。
 
-图片题可直接粘贴到聊天输入框，也可通过上传入口选择文件。Qwen3-VL-30B 只接收图片和当前学生问题并忠实提取可见信息；图片原始数据不会发送给 GLM。识别文本再与近期对话、本地知识库和按需联网结果一起交给 GLM-4.7-Flash，因此仍可继续追问图片中的某一步推导。
+图片题可直接粘贴到聊天输入框，也可通过上传入口选择文件。MiMo-VL 在识图阶段只接收图片和当前学生问题并忠实提取可见信息；第二阶段不再发送图片原始数据，而是把识别文本与近期对话、本地知识库和按需联网结果一起交给同一 MiMo-VL 组织答案，因此仍可继续追问图片中的某一步推导。
 
 ## 数据、迁移与安全
 
