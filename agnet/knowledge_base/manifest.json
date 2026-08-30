@@ -1,5 +1,5 @@
 {
-  "chunks": 53048,
+  "chunks": 58065,
   "files_scanned": 668,
   "failures": [],
   "by_type": {
@@ -44,17 +44,47 @@
     "imported_newton_rings_chunks": 113,
     "imported_newton_rings_duplicates": 14,
     "imported_newton_rings_invalid": 0,
-    "imported_young_modulus_chunks": 354,
-    "imported_young_modulus_duplicates": 0,
+    "imported_young_modulus_chunks": 111,
+    "imported_young_modulus_duplicates": 243,
     "imported_young_modulus_invalid": 0,
     "imported_rotational_inertia_chunks": 285,
     "imported_rotational_inertia_duplicates": 0,
-    "imported_rotational_inertia_invalid": 0
+    "imported_rotational_inertia_invalid": 0,
+    "imported_viscosity_chunks": 954,
+    "imported_viscosity_duplicates": 243,
+    "imported_viscosity_invalid": 0,
+    "imported_specific_heat_chunks": 347,
+    "imported_specific_heat_duplicates": 243,
+    "imported_specific_heat_invalid": 0,
+    "imported_franck_hertz_chunks": 503,
+    "imported_franck_hertz_duplicates": 0,
+    "imported_franck_hertz_invalid": 0,
+    "imported_hall_effect_chunks": 694,
+    "imported_hall_effect_duplicates": 0,
+    "imported_hall_effect_invalid": 0,
+    "imported_magnetic_hysteresis_chunks": 284,
+    "imported_magnetic_hysteresis_duplicates": 243,
+    "imported_magnetic_hysteresis_invalid": 0,
+    "imported_temperature_sensor_chunks": 559,
+    "imported_temperature_sensor_duplicates": 153,
+    "imported_temperature_sensor_invalid": 0,
+    "imported_wheatstone_bridge_chunks": 30,
+    "imported_wheatstone_bridge_duplicates": 0,
+    "imported_wheatstone_bridge_invalid": 0,
+    "imported_prism_refractive_index_chunks": 202,
+    "imported_prism_refractive_index_duplicates": 153,
+    "imported_prism_refractive_index_invalid": 0,
+    "imported_thermal_conductivity_chunks": 1059,
+    "imported_thermal_conductivity_duplicates": 156,
+    "imported_thermal_conductivity_invalid": 0,
+    "imported_thin_lens_focal_chunks": 634,
+    "imported_thin_lens_focal_duplicates": 155,
+    "imported_thin_lens_focal_invalid": 0
   },
   "primary_textbook": "教学素材/教材/物理学  第5版 -- 祝之光 -- 2018 -- 北京_高等教育出版社.pdf",
   "primary_solution": "教学素材/教材/物理学（第五版）祝之光习题解答.pdf",
-  "policy": "祝之光教材优先，教学素材全目录补充，竞赛专题知识库增强",
-  "base_chunks": 35973,
+  "policy": "祝之光教材优先，教师专用目录除外，其他教学素材补充，竞赛专题知识库增强",
+  "base_chunks": 35967,
   "imported_knowledge_bases": [
     {
       "collection": "双棱镜干涉测波长实验",
@@ -71,11 +101,32 @@
       "invalid_skipped": 0
     },
     {
+      "collection": "弗兰克-赫兹实验",
+      "file": "franck_hertz.jsonl",
+      "chunks": 503,
+      "duplicates_skipped": 0,
+      "invalid_skipped": 0
+    },
+    {
+      "collection": "霍尔效应测磁场分布实验",
+      "file": "hall_effect.jsonl",
+      "chunks": 694,
+      "duplicates_skipped": 0,
+      "invalid_skipped": 0
+    },
+    {
       "collection": "李萨如实验",
       "file": "lissajous.jsonl",
       "chunks": 10122,
       "duplicates_skipped": 0,
       "invalid_skipped": 38
+    },
+    {
+      "collection": "铁磁滞回线测定与观察实验",
+      "file": "magnetic_hysteresis.jsonl",
+      "chunks": 284,
+      "duplicates_skipped": 243,
+      "invalid_skipped": 0
     },
     {
       "collection": "牛顿环等厚干涉实验",
@@ -89,6 +140,13 @@
       "file": "photoelectric.jsonl",
       "chunks": 301,
       "duplicates_skipped": 0,
+      "invalid_skipped": 0
+    },
+    {
+      "collection": "三棱镜折射率测定实验",
+      "file": "prism_refractive_index.jsonl",
+      "chunks": 202,
+      "duplicates_skipped": 153,
       "invalid_skipped": 0
     },
     {
@@ -106,12 +164,57 @@
       "invalid_skipped": 4
     },
     {
+      "collection": "固体比热容的测定实验",
+      "file": "specific_heat.jsonl",
+      "chunks": 347,
+      "duplicates_skipped": 243,
+      "invalid_skipped": 0
+    },
+    {
+      "collection": "温度传感器特性的测定实验",
+      "file": "temperature_sensor.jsonl",
+      "chunks": 559,
+      "duplicates_skipped": 153,
+      "invalid_skipped": 0
+    },
+    {
+      "collection": "固体热传导系数测定实验",
+      "file": "thermal_conductivity.jsonl",
+      "chunks": 1059,
+      "duplicates_skipped": 156,
+      "invalid_skipped": 0
+    },
+    {
+      "collection": "薄透镜焦距的测定实验",
+      "file": "thin_lens_focal.jsonl",
+      "chunks": 634,
+      "duplicates_skipped": 155,
+      "invalid_skipped": 0
+    },
+    {
+      "collection": "粘滞系数测定实验",
+      "file": "viscosity.jsonl",
+      "chunks": 954,
+      "duplicates_skipped": 243,
+      "invalid_skipped": 0
+    },
+    {
+      "collection": "惠斯通电桥测电阻实验",
+      "file": "wheatstone_bridge.jsonl",
+      "chunks": 30,
+      "duplicates_skipped": 0,
+      "invalid_skipped": 0
+    },
+    {
       "collection": "杨氏模量测定实验",
       "file": "young_modulus.jsonl",
-      "chunks": 354,
-      "duplicates_skipped": 0,
+      "chunks": 111,
+      "duplicates_skipped": 243,
       "invalid_skipped": 0
     }
   ],
-  "import_failures": []
+  "import_failures": [],
+  "excluded_materials": [
+    "教学素材/教师专用"
+  ]
 }

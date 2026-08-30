@@ -10,7 +10,7 @@ from pathlib import Path
 
 from fastapi import Cookie, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from openpyxl import load_workbook
 
@@ -32,6 +32,11 @@ _USED_USER_LOGIN_NONCES: dict[str, int] = {}
 _MAX_EXCEL_BYTES = 8 * 1024 * 1024
 _MAX_EXCEL_UNCOMPRESSED_BYTES = 64 * 1024 * 1024
 _MAX_ROSTER_ROWS = 2000
+_NO_STORE_HEADERS = {
+    "Cache-Control": "no-store, max-age=0",
+    "Pragma": "no-cache",
+    "Referrer-Policy": "no-referrer",
+}
 
 
 class IdentityRosterEntry(BaseModel):
@@ -271,12 +276,15 @@ def _analytics_login_page(auto_load: bool = False, public_prefix: str = "") -> s
     body { margin: 0; font-family: "Microsoft YaHei", system-ui, sans-serif; background: #0f141b; color: #e7edf5; }
     main { max-width: 1120px; margin: 0 auto; padding: 36px 20px; }
     .hero { background: #142235; border: 1px solid #26384f; border-radius: 10px; padding: 24px; margin-bottom: 22px; }
+    .hero-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; }
     h1 { margin: 0 0 8px; font-size: 28px; }
     .muted { color: #9fb0c4; }
     .login { display: flex; gap: 10px; align-items: center; margin-top: 18px; }
     input { flex: 1; min-width: 240px; padding: 11px 12px; border-radius: 6px; border: 1px solid #40546d; background: #0b1118; color: #fff; font-size: 15px; }
     button { padding: 11px 16px; border-radius: 6px; border: 0; background: #2f80ed; color: #fff; font-weight: 700; cursor: pointer; }
     button:hover { background: #4a90f0; }
+    .logout-button { flex: 0 0 auto; background: #a43d4a; }
+    .logout-button:hover { background: #c4515d; }
     .error { color: #ff8a8a; margin-top: 12px; min-height: 22px; }
     .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 18px 0; }
     .card { background: #121b27; border: 1px solid #26384f; border-radius: 8px; padding: 16px; }
@@ -305,14 +313,19 @@ def _analytics_login_page(auto_load: bool = False, public_prefix: str = "") -> s
     .success { color: #8ce0b8; min-height: 22px; margin-top: 8px; }
     pre { white-space: pre-wrap; word-break: break-word; background: #091019; border: 1px solid #26384f; border-radius: 8px; padding: 12px; max-height: 360px; overflow: auto; }
     li { margin: 6px 0; }
-    @media (max-width: 800px) { .grid, .cols, .roster-form, .excel-upload { grid-template-columns: 1fr; } .login { flex-direction: column; align-items: stretch; } }
+    @media (max-width: 800px) { .grid, .cols, .roster-form, .excel-upload { grid-template-columns: 1fr; } .login { flex-direction: column; align-items: stretch; } .hero-heading { align-items: stretch; flex-direction: column; } .logout-button { width: 100%; } }
   </style>
 </head>
 <body>
   <main>
     <section class="hero">
-      <h1>📈 大学物理智能助教数据分析</h1>
-      <div class="muted">__AUTH_NOTE__</div>
+      <div class="hero-heading">
+        <div>
+          <h1>📈 大学物理智能助教数据分析</h1>
+          <div class="muted">__AUTH_NOTE__</div>
+        </div>
+        <button id="admin-logout" class="logout-button" type="button" onclick="logoutAdmin()" hidden>退出登录</button>
+      </div>
       <div class="login" __AUTH_STYLE__>
         <input id="token" type="password" placeholder="输入管理员口令" autocomplete="current-password" />
         <button onclick="loadAnalytics()">进入</button>
@@ -347,6 +360,15 @@ def _analytics_login_page(auto_load: bool = False, public_prefix: str = "") -> s
       const ms = Number(value);
       if (!Number.isFinite(ms)) return "—";
       return ms < 1000 ? `${ms.toFixed(1)} ms` : `${(ms / 1000).toFixed(ms >= 10000 ? 1 : 3)} s`;
+    }
+
+    function logoutAdmin() {
+      const form = document.createElement("form");
+      form.method = "post";
+      form.action = apiUrl("/admin-logout");
+      form.style.display = "none";
+      document.body.appendChild(form);
+      form.submit();
     }
 
     async function importRoster() {
@@ -476,6 +498,7 @@ def _analytics_login_page(auto_load: bool = False, public_prefix: str = "") -> s
         return;
       }
       const data = await resp.json();
+      document.getElementById("admin-logout").hidden = false;
       const total = data.total || {};
       const users = data.users || {};
       const roster = data.roster || {};
@@ -527,7 +550,9 @@ def _analytics_login_page(auto_load: bool = False, public_prefix: str = "") -> s
       const rosterList = itemList(roster.list, row => {
         const typeName = row.identity_type === "student" ? "学生" : "教师";
         const idName = row.identity_type === "student" ? "学号" : "工号";
-        const state = row.username ? `已绑定 @${escapeHtml(row.username)}` : "未绑定";
+        // 名册中的 @ 标识使用校内学号/工号；登录用户名可能是昵称，
+        // 不适合作为管理员核对身份时的稳定标识。
+        const state = row.username ? `已绑定 @${escapeHtml(row.institutional_id)}` : "未绑定";
         const label = `${row.real_name} · ${typeName} · ${row.institutional_id}`;
         const actions = row.username ? "" : `<span class="roster-actions"><button type="button" onclick='editRoster(${Number(row.id)}, ${JSON.stringify(row.identity_type)}, ${JSON.stringify(row.institutional_id)}, ${JSON.stringify(row.real_name)})'>修改</button><button type="button" class="danger" onclick='deleteRoster(${Number(row.id)}, ${JSON.stringify(label)})'>删除</button></span>`;
         return `<li><b>${escapeHtml(row.real_name)}</b> · ${typeName} · ${idName} ${escapeHtml(row.institutional_id)}<br><span class="muted">${state}</span>${actions}</li>`;
@@ -834,7 +859,9 @@ def admin_login(request: Request, ticket: str = Query(min_length=20, max_length=
     if not public_prefix:
         public_prefix = os.getenv("PHYSICS_GATEWAY_PUBLIC_PREFIX", "")
     response = RedirectResponse(
-        url=with_public_prefix("/analytics", "", public_prefix), status_code=303
+        url=with_public_prefix("/analytics", "", public_prefix),
+        status_code=303,
+        headers=_NO_STORE_HEADERS,
     )
     forwarded_proto = request.headers.get("x-forwarded-proto", request.url.scheme).split(",", 1)[0].strip()
     response.set_cookie(
@@ -846,6 +873,39 @@ def admin_login(request: Request, ticket: str = Query(min_length=20, max_length=
         samesite="strict",
         path="/",
     )
+    return response
+
+
+@app.post("/admin-logout")
+def admin_logout(
+    request: Request,
+    mode: str = Query(default="system", max_length=16),
+):
+    """Clear both administrator and user sessions before switching accounts."""
+    if request.headers.get("sec-fetch-site", "").strip().lower() == "cross-site":
+        raise HTTPException(status_code=403, detail="Cross-site logout is not allowed.")
+    response = RedirectResponse(
+        url=_public_app_url(request, mode),
+        status_code=303,
+        headers=_NO_STORE_HEADERS,
+    )
+    secure = _request_is_https(request)
+    cookie_paths = {"/", _user_session_cookie_path(request)}
+    for cookie_path in cookie_paths:
+        response.delete_cookie(
+            _ADMIN_SESSION_COOKIE,
+            path=cookie_path,
+            secure=secure,
+            httponly=True,
+            samesite="strict",
+        )
+        response.delete_cookie(
+            user_session.USER_SESSION_COOKIE,
+            path=cookie_path,
+            secure=secure,
+            httponly=True,
+            samesite="strict",
+        )
     return response
 
 
@@ -938,10 +998,19 @@ def analytics(
     has_session = _valid_admin_session(admin_session)
     has_token = bool(x_admin_token or authorization)
     if not has_session and not has_token and format != "json":
-        return HTMLResponse(_analytics_login_page(public_prefix=public_prefix))
+        return HTMLResponse(
+            _analytics_login_page(public_prefix=public_prefix),
+            headers=_NO_STORE_HEADERS,
+        )
 
     client_ip = request.client.host if request.client else "unknown"
     _require_admin_token(x_admin_token, authorization, client_ip, admin_session)
     if format != "json":
-        return HTMLResponse(_analytics_login_page(auto_load=True, public_prefix=public_prefix))
-    return _analytics_payload(recent_error_limit)
+        return HTMLResponse(
+            _analytics_login_page(auto_load=True, public_prefix=public_prefix),
+            headers=_NO_STORE_HEADERS,
+        )
+    return JSONResponse(
+        _analytics_payload(recent_error_limit),
+        headers=_NO_STORE_HEADERS,
+    )

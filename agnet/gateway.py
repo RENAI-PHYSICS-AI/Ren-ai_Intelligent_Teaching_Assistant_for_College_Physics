@@ -7,6 +7,7 @@ import ssl
 from collections.abc import AsyncIterator
 
 from aiohttp import ClientSession, ClientTimeout, WSMsgType, web
+from multidict import CIMultiDict
 
 
 LOGGER = logging.getLogger("physics_gateway")
@@ -45,9 +46,40 @@ EXPERIMENT_UPSTREAMS = {
     "/experiments/rotational-inertia": os.getenv(
         "PHYSICS_ROTATIONAL_INERTIA_UPSTREAM", "http://127.0.0.1:9391"
     ),
+    "/experiments/viscosity": os.getenv(
+        "PHYSICS_VISCOSITY_UPSTREAM", "http://127.0.0.1:9392"
+    ),
+    "/experiments/specific-heat": os.getenv(
+        "PHYSICS_SPECIFIC_HEAT_UPSTREAM", "http://127.0.0.1:9393"
+    ),
+    "/experiments/franck-hertz": os.getenv(
+        "PHYSICS_FRANCK_HERTZ_UPSTREAM", "http://127.0.0.1:9394"
+    ),
+    "/experiments/temperature-sensor": os.getenv(
+        "PHYSICS_TEMPERATURE_SENSOR_UPSTREAM", "http://127.0.0.1:9395"
+    ),
+    "/experiments/wheatstone-bridge": os.getenv(
+        "PHYSICS_WHEATSTONE_BRIDGE_UPSTREAM", "http://127.0.0.1:9396"
+    ),
+    "/experiments/hall-effect": os.getenv(
+        "PHYSICS_HALL_EFFECT_UPSTREAM", "http://127.0.0.1:9397"
+    ),
+    "/experiments/magnetic-hysteresis": os.getenv(
+        "PHYSICS_MAGNETIC_HYSTERESIS_UPSTREAM", "http://127.0.0.1:9398"
+    ),
+    "/experiments/thin-lens-focal": os.getenv(
+        "PHYSICS_THIN_LENS_FOCAL_UPSTREAM", "http://127.0.0.1:9399"
+    ),
+    "/experiments/prism-refractive-index": os.getenv(
+        "PHYSICS_PRISM_REFRACTIVE_INDEX_UPSTREAM", "http://127.0.0.1:9400"
+    ),
+    "/experiments/thermal-conductivity": os.getenv(
+        "PHYSICS_THERMAL_CONDUCTIVITY_UPSTREAM", "http://127.0.0.1:9401"
+    ),
 }
 ADMIN_PATHS = {
     "/admin-login",
+    "/admin-logout",
     "/analytics",
     "/identity-roster",
     "/identity-roster/excel",
@@ -118,6 +150,15 @@ def forward_headers(request: web.Request) -> dict[str, str]:
         request.headers.get("X-Forwarded-Prefix", "").split(",", 1)[0].strip()
         or PUBLIC_PATH_PREFIX
     )
+    return headers
+
+
+def forward_response_headers(upstream_headers) -> CIMultiDict[str]:
+    """Preserve repeatable response headers such as Set-Cookie."""
+    headers: CIMultiDict[str] = CIMultiDict()
+    for key, value in upstream_headers.items():
+        if key.lower() not in HOP_BY_HOP:
+            headers.add(key, value)
     return headers
 
 
@@ -194,13 +235,10 @@ async def http_proxy(request: web.Request) -> web.StreamResponse:
         data=body,
         allow_redirects=False,
     ) as upstream:
-        headers = {
-            key: value
-            for key, value in upstream.headers.items()
-            if key.lower() not in HOP_BY_HOP
-        }
         response = web.StreamResponse(
-            status=upstream.status, reason=upstream.reason, headers=headers
+            status=upstream.status,
+            reason=upstream.reason,
+            headers=forward_response_headers(upstream.headers),
         )
         await response.prepare(request)
         async for chunk in upstream.content.iter_chunked(64 * 1024):

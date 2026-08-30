@@ -73,7 +73,17 @@ touch \
   "$APP_ROOT/agnet/runtime/experiments/biprism.log" \
   "$APP_ROOT/agnet/runtime/experiments/newton_rings.log" \
   "$APP_ROOT/agnet/runtime/experiments/young_modulus.log" \
-  "$APP_ROOT/agnet/runtime/experiments/rotational_inertia.log"
+  "$APP_ROOT/agnet/runtime/experiments/rotational_inertia.log" \
+  "$APP_ROOT/agnet/runtime/experiments/viscosity.log" \
+  "$APP_ROOT/agnet/runtime/experiments/specific_heat.log" \
+  "$APP_ROOT/agnet/runtime/experiments/franck_hertz.log" \
+  "$APP_ROOT/agnet/runtime/experiments/temperature_sensor.log" \
+  "$APP_ROOT/agnet/runtime/experiments/wheatstone_bridge.log" \
+  "$APP_ROOT/agnet/runtime/experiments/hall_effect.log" \
+  "$APP_ROOT/agnet/runtime/experiments/magnetic_hysteresis.log" \
+  "$APP_ROOT/agnet/runtime/experiments/thin_lens_focal.log" \
+  "$APP_ROOT/agnet/runtime/experiments/prism_refractive_index.log" \
+  "$APP_ROOT/agnet/runtime/experiments/thermal_conductivity.log"
 
 echo "[1/8] 在项目目录准备中文字体……"
 if ! printf '%s  %s\n' "$CJK_FONT_SHA256" "$CJK_FONT_PATH" | \
@@ -188,7 +198,7 @@ fi
 
 echo "[7/8] 初始化可视化实验……"
 if [[ "$PRECOMPILE_EXPERIMENTS" == "1" ]]; then
-  for experiment in lissajous sound_speed electron_em photoelectric biprism newton_rings young_modulus rotational_inertia; do
+  for experiment in lissajous sound_speed electron_em photoelectric biprism newton_rings young_modulus rotational_inertia viscosity specific_heat franck_hertz temperature_sensor wheatstone_bridge hall_effect magnetic_hysteresis thin_lens_focal prism_refractive_index thermal_conductivity; do
     env HOME="$HOME" JULIA_DEPOT_PATH="$RUNTIME_ROOT/julia-depot" \
       JULIA_NUM_THREADS="${JULIA_NUM_THREADS:-2}" \
       "$JULIA_BIN" --startup-file=no --project="$APP_ROOT/agnet/experiments/$experiment" \

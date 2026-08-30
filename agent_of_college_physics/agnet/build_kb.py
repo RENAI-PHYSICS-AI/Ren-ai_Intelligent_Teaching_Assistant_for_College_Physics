@@ -12,42 +12,91 @@ from collections import Counter
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
-from config import IMPORTED_KB_DIR, KB_DIR, KB_FILE, MATERIALS_DIR, SOLUTION_NAME, TEXTBOOK_DIR, TEXTBOOK_NAME
+from config import (
+    IMPORTED_KB_DIR,
+    KB_DIR,
+    KB_FILE,
+    MATERIALS_DIR,
+    PROJECT_ROOT,
+    SOLUTION_NAME,
+    TEACHER_MATERIALS_DIR,
+    TEXTBOOK_DIR,
+    TEXTBOOK_NAME,
+)
 
 CHAPTERS = [
-    "第1章 质点运动、时间和空间", "第2章 牛顿运动定律", "第3章 动量与角动量",
-    "第4章 功和能", "第5章 刚体力学", "第6章 机械振动", "第7章 机械波",
-    "第8章 相对论基础", "第9章 气体动理论", "第10章 热力学基础",
-    "第11章 静电场", "第12章 静电场中的导体和电介质", "第13章 恒定磁场",
-    "第14章 电磁感应", "第15章 电磁场与电磁波", "第16章 波动光学",
-    "第17章 量子物理基础", "第18章 原子核与粒子物理",
+    "第1章 质点运动、时间、空间",
+    "第2章 力、动量、能量",
+    "第3章 刚体的定轴转动",
+    "第4章 气体动理论",
+    "第5章 热力学基础",
+    "第6章 静电场",
+    "第7章 恒定磁场",
+    "第8章 电磁感应、电磁场",
+    "第9章 振动学基础",
+    "第10章 波动学基础",
+    "第11章 波动光学",
+    "第12章 波和粒子",
 ]
 
 TOPIC_RULES = [
-    (0, "质点|运动学|位移|速度|加速度|相对论|时空"), (1, "牛顿|摩擦|惯性|受力"),
-    (2, "动量|冲量|角动量|碰撞"), (3, "功和能|机械能|势能|保守力"),
-    (4, "刚体|转动惯量|力矩|定轴转动"), (5, "振动|简谐|阻尼|受迫|共振"),
-    (6, "机械波|波动|声波|驻波|多普勒"), (7, "狭义相对论|洛伦兹"),
-    (8, "气体动理论|分子运动|麦克斯韦|平均自由程"), (9, "热力学|熵|卡诺|循环"),
-    (10, "静电场|库仑|高斯|电势"), (11, "导体|电介质|电容"),
-    (12, "磁场|毕奥|安培|洛伦兹力|霍尔"), (13, "电磁感应|法拉第|楞次|自感|互感"),
-    (14, "电磁波|麦克斯韦方程"), (15, "光学|干涉|衍射|偏振|光栅"),
-    (16, "量子|黑体|光电效应|德布罗意|薛定谔"), (17, "原子核|放射性|粒子物理"),
+    (0, "质点运动|运动学|位移|路程|速度|加速度|圆周运动|经典时空|相对论时空"),
+    (1, "牛顿定律|动力学|摩擦|惯性|受力|动量|冲量|碰撞|功|动能|机械能|势能|保守力|粘滞|黏滞|粘度|黏度|斯托克斯|Stokes|落球|终端速度|流体阻力|雷诺数"),
+    (2, "刚体|转动惯量|力矩|定轴转动|角动量|转动定律"),
+    (3, "气体动理论|分子运动|自由度|能量均分|麦克斯韦速率|平均自由程"),
+    (4, "热力学|热力学第一定律|热力学第二定律|熵|卡诺|热循环|热机|等温|等压|等体|绝热|比热|比热容|热容量|量热|热平衡|混合法|冷却修正|电热法|温度传感器|热敏电阻|铂电阻|热电偶|热传导|导热系数|热导率|傅里叶定律|稳态导热|温度梯度|Lee[-–— ]?圆盘|Searle|Dulong[-–— ]?Petit|Einstein|Debye|杜隆[-–—· ]?珀替|爱因斯坦|德拜"),
+    (5, "静电场|库仑|高斯定理|电势|静电平衡|导体|电介质|电容|电场能|惠斯通|电桥|桥路|平衡电桥|测电阻"),
+    (6, "恒定磁场|磁感应|毕奥|安培|洛伦兹力|霍尔|磁滞|铁磁|磁畴|矫顽力|剩磁|Steinmetz|Preisach|Jiles[-–— ]?Atherton"),
+    (7, "电磁感应|法拉第|楞次|动生电动势|涡旋电场|自感|互感|位移电流|麦克斯韦方程|电磁场"),
+    (8, "振动|简谐|阻尼|受迫|共振"),
+    (9, "机械波|波动|声波|驻波|多普勒"),
+    (10, "波动光学|几何光学|光程|干涉|衍射|偏振|光栅|薄透镜|焦距|物距|像距|自准直|共轭法|贝塞尔法|Bessel|三棱镜|折射率|最小偏向角|分光计|色散|Cauchy"),
+    (11, "波粒|量子|黑体|光电效应|德布罗意|不确定关系|薛定谔|玻尔|原子核|放射性|弗兰克[-–— ]?赫兹|Franck[-–— ]?Hertz|第一激发电[势位]|激发电势|激发电位|非弹性碰撞|原子能级|汞原子|氩原子"),
 ]
 
-SUPPORTED = {".pdf", ".pptx", ".pptm", ".ppt", ".pot", ".docx", ".doc", ".md", ".txt", ".zip", ".mp4", ".mpg"}
+SUPPORTED = {".pdf", ".pptx", ".pptm", ".ppt", ".pot", ".docx", ".doc", ".md", ".txt", ".tex", ".zip", ".mp4", ".mpg"}
 _WPS = None
 _WPP = None
 IMPORTED_SOURCE_PREFIX = "竞赛知识库·"
 IMPORTED_COLLECTIONS = {
-    "electron_em": ("电子荷质比实验", "第13章 恒定磁场"),
-    "lissajous": ("李萨如实验", "第6章 机械振动"),
-    "photoelectric": ("光电效应实验", "第17章 量子物理基础"),
-    "sound_speed": ("声速测量实验", "第7章 机械波"),
-    "biprism": ("双棱镜干涉测波长实验", "第16章 波动光学"),
-    "newton_rings": ("牛顿环等厚干涉实验", "第16章 波动光学"),
-    "young_modulus": ("杨氏模量测定实验", "第2章 牛顿运动定律"),
-    "rotational_inertia": ("转动惯量测定实验", "第5章 刚体力学"),
+    "electron_em": ("电子荷质比实验", "第7章 恒定磁场"),
+    "lissajous": ("李萨如实验", "第9章 振动学基础"),
+    "photoelectric": ("光电效应实验", "第12章 波和粒子"),
+    "sound_speed": ("声速测量实验", "第10章 波动学基础"),
+    "biprism": ("双棱镜干涉测波长实验", "第11章 波动光学"),
+    "newton_rings": ("牛顿环等厚干涉实验", "第11章 波动光学"),
+    "young_modulus": ("杨氏模量测定实验", "第2章 力、动量、能量"),
+    "rotational_inertia": ("转动惯量测定实验", "第3章 刚体的定轴转动"),
+    "viscosity": ("粘滞系数测定实验", "第2章 力、动量、能量"),
+    "specific_heat": ("固体比热容的测定实验", "第5章 热力学基础"),
+    "franck_hertz": ("弗兰克-赫兹实验", "第12章 波和粒子"),
+    "temperature_sensor": ("温度传感器特性的测定实验", "第5章 热力学基础"),
+    "wheatstone_bridge": ("惠斯通电桥测电阻实验", "第6章 静电场"),
+    "hall_effect": ("霍尔效应测磁场分布实验", "第7章 恒定磁场"),
+    "magnetic_hysteresis": ("铁磁滞回线测定与观察实验", "第7章 恒定磁场"),
+    "thin_lens_focal": ("薄透镜焦距的测定实验", "光学实验·几何光学"),
+    "prism_refractive_index": ("三棱镜折射率测定实验", "光学实验·几何光学"),
+    "thermal_conductivity": ("固体热传导系数测定实验", "第5章 热力学基础"),
+}
+LEGACY_CHAPTER_MAP = {
+    "第1章 质点运动、时间和空间": "第1章 质点运动、时间、空间",
+    "第2章 牛顿运动定律": "第2章 力、动量、能量",
+    "第3章 动量与角动量": "第2章 力、动量、能量",
+    "第4章 功和能": "第2章 力、动量、能量",
+    "第5章 刚体力学": "第3章 刚体的定轴转动",
+    "第6章 机械振动": "第9章 振动学基础",
+    "第7章 机械波": "第10章 波动学基础",
+    "第8章 相对论基础": "第1章 质点运动、时间、空间",
+    "第9章 气体动理论": "第4章 气体动理论",
+    "第10章 热力学基础": "第5章 热力学基础",
+    "第11章 静电场": "第6章 静电场",
+    "第12章 静电场中的导体和电介质": "第6章 静电场",
+    "第13章 恒定磁场": "第7章 恒定磁场",
+    "第14章 电磁感应": "第8章 电磁感应、电磁场",
+    "第15章 电磁场与电磁波": "第8章 电磁感应、电磁场",
+    "第16章 波动光学": "第11章 波动光学",
+    "第17章 量子物理基础": "第12章 波和粒子",
+    "第18章 原子核与粒子物理": "第12章 波和粒子",
 }
 
 
@@ -93,14 +142,19 @@ def classify(text: str, fallback: str = "补充教学资料") -> str:
     return CHAPTERS[idx] if score else fallback
 
 
-def pdf_pages(pdf: Path) -> list[str]:
+def pdf_pages(pdf: Path, passwords: tuple[str, ...] = ()) -> list[str]:
     exe = shutil.which("pdftotext")
     if not exe:
         raise RuntimeError("缺少 pdftotext")
-    proc = subprocess.run([exe, "-layout", "-enc", "UTF-8", str(pdf), "-"], capture_output=True)
-    if proc.returncode:
-        return []
-    return proc.stdout.decode("utf-8", errors="replace").split("\f")
+    for password in ("", *tuple(passwords)):
+        command = [exe, "-layout", "-enc", "UTF-8"]
+        if password:
+            command.extend(["-upw", password])
+        command.extend([str(pdf), "-"])
+        proc = subprocess.run(command, capture_output=True)
+        if not proc.returncode:
+            return proc.stdout.decode("utf-8", errors="replace").split("\f")
+    return []
 
 
 def xml_text(blob: bytes) -> str:
@@ -313,8 +367,9 @@ def archive_listing(path: Path) -> str:
 
 
 def record_parts(records: list[dict], path: Path, parts: list[tuple[int, str, str]], source_type: str,
-                 priority: float, forced_chapter: str | None = None) -> int:
-    relative = path.relative_to(MATERIALS_DIR).as_posix()
+                 priority: float, forced_chapter: str | None = None, *,
+                 materials_root: Path | None = None) -> int:
+    relative = path.relative_to(materials_root or MATERIALS_DIR).as_posix()
     added = 0
     for number, locator, text in parts:
         text = clean(text)
@@ -332,6 +387,26 @@ def record_parts(records: list[dict], path: Path, parts: list[tuple[int, str, st
 def _text_fingerprint(text: str) -> str:
     normalized = re.sub(r"\s+", "", text).lower()
     return hashlib.sha1(normalized.encode("utf-8", errors="ignore")).hexdigest()
+
+
+def is_teacher_private_material(path: Path) -> bool:
+    """Return whether a source file belongs to the teacher-only material tree."""
+    candidates = (
+        (path.absolute(), TEACHER_MATERIALS_DIR.absolute()),
+        (path.resolve(), TEACHER_MATERIALS_DIR.resolve()),
+    )
+    for candidate, root in candidates:
+        try:
+            candidate.relative_to(root)
+            return True
+        except ValueError:
+            continue
+    return False
+
+
+def is_teacher_private_relative_path(relative_path: object) -> bool:
+    normalized = str(relative_path or "").replace("\\", "/").strip("/")
+    return normalized == "教师专用" or normalized.startswith("教师专用/")
 
 
 def import_existing_knowledge_bases(records: list[dict], stats: Counter, failures: list[dict]) -> list[dict]:
@@ -410,13 +485,31 @@ def _write_records(records: list[dict]) -> None:
 def merge_imports_only() -> dict:
     """Refresh imported collections without re-extracting the large teaching-material tree."""
     records = []
+    chapter_index_relative = ""
     with KB_FILE.open("r", encoding="utf-8") as handle:
         for line in handle:
             if not line.strip():
                 continue
             row = json.loads(line)
-            if not str(row.get("source_type", "")).startswith(IMPORTED_SOURCE_PREFIX):
+            if str(row.get("source_type", "")) == "章节索引":
+                chapter_index_relative = chapter_index_relative or str(row.get("relative_path", ""))
+                continue
+            if (
+                not str(row.get("source_type", "")).startswith(IMPORTED_SOURCE_PREFIX)
+                and not is_teacher_private_relative_path(row.get("relative_path"))
+            ):
+                old_chapter = str(row.get("chapter", ""))
+                if old_chapter in LEGACY_CHAPTER_MAP:
+                    row["chapter"] = LEGACY_CHAPTER_MAP[old_chapter]
                 records.append(row)
+    if chapter_index_relative:
+        for i, chapter in enumerate(CHAPTERS, 1):
+            records.append({
+                "id": f"chapter-{i}", "source": TEXTBOOK_NAME, "source_type": "章节索引",
+                "page": 0, "chapter": chapter,
+                "text": f"{chapter}。以祝之光《物理学》第5版为基准，其他教学材料仅作补充。",
+                "relative_path": chapter_index_relative, "locator": "章节索引", "priority": 1.5,
+            })
     base_chunks = len(records)
     stats = Counter(); failures = []
     imported = import_existing_knowledge_bases(records, stats, failures)
@@ -424,7 +517,9 @@ def merge_imports_only() -> dict:
     manifest_path = KB_DIR / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
     manifest.update({"chunks": len(records), "base_chunks": base_chunks, "imported_knowledge_bases": imported,
-                     "import_failures": failures, "policy": "祝之光教材优先，教学素材全目录补充，竞赛专题知识库增强"})
+                     "import_failures": failures,
+                     "excluded_materials": [TEACHER_MATERIALS_DIR.relative_to(PROJECT_ROOT).as_posix()],
+                     "policy": "祝之光教材优先，教师专用目录除外，其他教学素材补充，竞赛专题知识库增强"})
     manifest["by_type"] = {**manifest.get("by_type", {}), **dict(sorted(stats.items()))}
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     return manifest
@@ -434,7 +529,11 @@ def build() -> dict:
     textbook, solution = find_primary_pdfs()
     records: list[dict] = []
     stats = Counter(); failures = []
-    all_files = sorted(p for p in MATERIALS_DIR.rglob("*") if p.is_file())
+    all_files = sorted(
+        p
+        for p in MATERIALS_DIR.rglob("*")
+        if p.is_file() and not is_teacher_private_material(p)
+    )
     try:
       for path in all_files:
         ext = path.suffix.lower()
@@ -461,7 +560,7 @@ def build() -> dict:
                         "warning": "；".join(legacy_failures)
                         + ("；已回退到二进制恢复" if extractor_name == "二进制恢复" else ""),
                     })
-            elif ext in {".md", ".txt"}:
+            elif ext in {".md", ".txt", ".tex"}:
                 parts = [(1, "全文", path.read_text(encoding="utf-8", errors="replace"))]
             elif ext == ".zip":
                 parts = [(1, "压缩包目录", archive_listing(path))]
@@ -495,7 +594,8 @@ def build() -> dict:
                 "primary_solution": solution.relative_to(PROJECT_ROOT).as_posix(),
                 "base_chunks": base_chunks,
                 "imported_knowledge_bases": imported,
-                "policy": "祝之光教材优先，教学素材全目录补充，竞赛专题知识库增强"}
+                "excluded_materials": [TEACHER_MATERIALS_DIR.relative_to(PROJECT_ROOT).as_posix()],
+                "policy": "祝之光教材优先，教师专用目录除外，其他教学素材补充，竞赛专题知识库增强"}
     (KB_DIR / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     return manifest
 

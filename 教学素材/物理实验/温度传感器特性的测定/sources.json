@@ -1,0 +1,112 @@
+[
+  {
+    "id": "callendar-1887",
+    "authors": ["H. L. Callendar"],
+    "year": 1887,
+    "title": "On the Practical Measurement of Temperature: Experiments Made at the Cavendish Laboratory, Cambridge",
+    "publisher": "Royal Society",
+    "type": "primary_paper",
+    "topic": "铂电阻温度计的起源、稳定性和可重复性",
+    "url": "https://doi.org/10.1098/rsta.1887.0006",
+    "local_file": null
+  },
+  {
+    "id": "its90-1990",
+    "authors": ["H. Preston-Thomas"],
+    "year": 1990,
+    "title": "The International Temperature Scale of 1990 (ITS-90)",
+    "publisher": "Metrologia",
+    "type": "scale_definition",
+    "topic": "ITS-90 固定点、插值仪器和国际温标",
+    "url": "https://doi.org/10.1088/0026-1394/27/1/002",
+    "local_file": null
+  },
+  {
+    "id": "iec-60751-2022",
+    "authors": ["International Electrotechnical Commission"],
+    "year": 2022,
+    "title": "Industrial platinum resistance thermometers and platinum temperature sensors",
+    "publisher": "IEC",
+    "type": "standard",
+    "topic": "Pt100 阻温关系、允差类别与性能试验",
+    "url": "https://webstore.iec.ch/en/publication/63753",
+    "local_file": null
+  },
+  {
+    "id": "iec-60584-1-2013",
+    "authors": ["International Electrotechnical Commission"],
+    "year": 2013,
+    "title": "Thermocouples - Part 1: EMF specifications and tolerances",
+    "publisher": "IEC",
+    "type": "standard",
+    "topic": "热电偶热电动势参考函数与允差",
+    "url": "https://webstore.iec.ch/en/publication/2521",
+    "local_file": null
+  },
+  {
+    "id": "nist-mono-175",
+    "authors": ["G. W. Burns", "M. G. Scroger", "G. F. Strouse", "M. C. Croarkin", "W. F. Guthrie"],
+    "year": 1993,
+    "title": "Temperature-Electromotive Force Reference Functions and Tables for the Letter-Designated Thermocouple Types Based on the ITS-90",
+    "publisher": "NIST",
+    "type": "reference_tables",
+    "topic": "B/E/J/K/N/R/S/T 型热电偶参考函数与表格",
+    "url": "https://doi.org/10.6028/NIST.MONO.175",
+    "local_file": "ref/NIST_MONO_175_Thermocouples.pdf"
+  },
+  {
+    "id": "nist-sp-250-81",
+    "authors": ["G. F. Strouse"],
+    "year": 2008,
+    "title": "Standard Platinum Resistance Thermometer Calibrations from the Ar TP to the Ag FP",
+    "publisher": "NIST",
+    "type": "calibration_guide",
+    "topic": "标准铂电阻固定点校准、电桥读数和不确定度",
+    "url": "https://doi.org/10.6028/NIST.SP.250-81",
+    "local_file": "ref/NIST_SP250_81_SPRT_Calibration.pdf"
+  },
+  {
+    "id": "nist-ir-6225",
+    "authors": ["G. F. Strouse", "B. W. Mangum", "C. D. Vaughn", "E. Y. Xu"],
+    "year": 1998,
+    "title": "A New NIST Automated Calibration System for Industrial-Grade Platinum Resistance Thermometers",
+    "publisher": "NIST",
+    "type": "technical_report",
+    "topic": "工业铂电阻的比较温槽、电桥和自动校准",
+    "url": "https://doi.org/10.6028/NIST.IR.6225",
+    "local_file": "ref/NIST_IR6225_IPRT_Automated_Calibration.pdf"
+  },
+  {
+    "id": "bipm-cct-iprt",
+    "authors": ["J. Pearce", "R. Rusby", "K. Yamazawa", "S. Rudtsch", "L. Iacomini", "G. Lopardo", "D. R. White", "W. L. Tew"],
+    "year": 2021,
+    "title": "Guide to Secondary Thermometry: Industrial Platinum Resistance Thermometers",
+    "publisher": "BIPM CCT",
+    "type": "official_guide",
+    "topic": "IPRT 结构、读出、校准、滞后、自热和不确定度",
+    "url": "https://www.bipm.org/documents/20126/41773843/BIPM_CCT_Guide_to_IPRTs.pdf",
+    "local_file": "ref/BIPM_CCT_Guide_IPRT.pdf"
+  },
+  {
+    "id": "bipm-cct-thermocouple-part1",
+    "authors": ["D. R. White et al."],
+    "year": 2021,
+    "title": "Guide to Secondary Thermometry: Thermocouple Thermometry, Part 1 - General Usage",
+    "publisher": "BIPM CCT",
+    "type": "official_guide",
+    "topic": "热电偶参考端、补偿导线、非均匀性与安装",
+    "url": "https://www.bipm.org/documents/20126/41773843/Thermocouple_Thermometry_Part1.pdf",
+    "local_file": "ref/BIPM_CCT_Thermocouple_Part1.pdf"
+  },
+  {
+    "id": "jcgm-100-2008",
+    "authors": ["Joint Committee for Guides in Metrology"],
+    "year": 2008,
+    "title": "Evaluation of Measurement Data - Guide to the Expression of Uncertainty in Measurement",
+    "publisher": "JCGM/BIPM",
+    "type": "metrology_guide",
+    "topic": "A/B 类标准不确定度、传播、合成与扩展不确定度",
+    "url": "https://doi.org/10.59161/JCGM100-2008E",
+    "local_file": "ref/JCGM_100_2008_GUM.pdf"
+  }
+]

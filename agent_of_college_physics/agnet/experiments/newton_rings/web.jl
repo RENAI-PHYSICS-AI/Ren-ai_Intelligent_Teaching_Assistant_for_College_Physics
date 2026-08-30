@@ -13,6 +13,7 @@ using WGLMakie
 
 const DOM = Bonito.DOM
 const Slider = WGLMakie.Makie.Slider
+const Button = WGLMakie.Makie.Button
 
 # The teaching experiment treats the nominal sodium-yellow wavelength as known
 # and obtains the plano-convex lens radius from the measured dark-ring diameters.
@@ -36,6 +37,7 @@ const GREEN = RGBf(0.36, 0.82, 0.55)
 const VIOLET = RGBf(0.61, 0.48, 0.92)
 const MUTED = RGBf(0.58, 0.62, 0.70)
 const PANEL_BG = RGBf(0.075, 0.085, 0.105)
+const BUTTON_BG = RGBf(0.13, 0.15, 0.19)
 const CJK_PROBE_TEXT = "牛顿环钠黄光曲率半径逐差测量"
 const WGL_SHADER_FILES = (
     "mesh.frag",
@@ -228,6 +230,58 @@ function add_metrics!(grid, values, detail)
     rowsize!(grid, 1, 28)
     rowsize!(grid, 2, 48)
     rowgap!(grid, 8)
+    return nothing
+end
+
+function bind_playback!(grid, row, playback_slider, playback_range, reset_values; step = 1)
+    playing = Observable(false)
+    playback_values = collect(playback_range)
+    numeric_values = Float64.(playback_values)
+    generation = Ref(0)
+    button_grid = GridLayout()
+    grid[1:max(row - 1, 2), 4] = button_grid
+    play_button = Button(
+        button_grid[1, 1],
+        label = "播放",
+        height = 31,
+        buttoncolor = BUTTON_BG,
+        labelcolor = :white,
+    )
+    reset_button = Button(
+        button_grid[2, 1],
+        label = "重置",
+        height = 31,
+        buttoncolor = BUTTON_BG,
+        labelcolor = :white,
+    )
+    rowgap!(button_grid, 8)
+    colsize!(grid, 4, Fixed(116))
+
+    on(play_button.clicks) do _
+        playing[] = !playing[]
+        generation[] += 1
+        current_generation = generation[]
+        play_button.label[] = playing[] ? "暂停" : "播放"
+        if playing[]
+            @async begin
+                while playing[] && generation[] == current_generation
+                    current = Float64(playback_slider.value[])
+                    index = argmin(abs.(numeric_values .- current))
+                    next_index = mod1(index + step, length(playback_values))
+                    set_close_to!(playback_slider, playback_values[next_index])
+                    sleep(0.03)
+                end
+            end
+        end
+    end
+    on(reset_button.clicks) do _
+        playing[] = false
+        generation[] += 1
+        play_button.label[] = "播放"
+        for (slider, value) in reset_values
+            set_close_to!(slider, value)
+        end
+    end
     return nothing
 end
 
@@ -435,6 +489,18 @@ function formation_figure()
             value.gap_m * 1.0e6,
         )
     end
+    bind_playback!(
+        controls,
+        5,
+        contact_gap,
+        0.00:0.01:0.30,
+        [
+            (curvature_radius, 1.00),
+            (film_index, 1.00),
+            (contact_gap, 0.00),
+            (radial_span, 5.0),
+        ],
+    )
     add_metrics!(metrics, values, detail)
     return figure
 end
@@ -522,6 +588,18 @@ function measurement_figure()
         lift(value -> value.scan_is_monotonic ? "单向序列：通过" : "单向序列：异常", data),
     )
     detail = "按 30、25、20、15、10、5 环左侧，再按 5、10、15、20、25、30 环右侧连续同向读数；不回程，可避免测微鼓轮空程差。"
+    bind_playback!(
+        controls,
+        5,
+        selected_order,
+        collect(COURSE_ORDERS),
+        [
+            (curvature_radius, 1.00),
+            (contact_gap, 0.08),
+            (reading_noise, 8),
+            (selected_order, 15),
+        ],
+    )
     add_metrics!(metrics, values, detail)
     return figure
 end
@@ -623,6 +701,18 @@ function difference_figure()
             value.relative_error_percent,
         )
     end
+    bind_playback!(
+        controls,
+        5,
+        contact_gap,
+        0.00:0.01:0.30,
+        [
+            (curvature_radius, 1.00),
+            (contact_gap, 0.08),
+            (reading_noise, 8),
+            (wavelength_uncertainty, 0.1),
+        ],
+    )
     add_metrics!(metrics, values, detail)
     return figure
 end
@@ -700,6 +790,18 @@ function fit_figure()
             value.relative_error_percent,
         )
     end
+    bind_playback!(
+        controls,
+        5,
+        contact_gap,
+        0.00:0.01:0.30,
+        [
+            (curvature_radius, 1.00),
+            (contact_gap, 0.08),
+            (reading_noise, 8),
+            (wavelength_uncertainty, 0.1),
+        ],
+    )
     add_metrics!(metrics, values, detail)
     return figure
 end

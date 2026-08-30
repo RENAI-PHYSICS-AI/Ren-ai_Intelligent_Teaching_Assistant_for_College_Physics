@@ -28,7 +28,7 @@ class Chunk:
 
 
 def _terms(text: str) -> list[str]:
-    normalized = re.sub(r"\\s+", "", text.lower())
+    normalized = re.sub(r"\s+", "", text.lower())
     chinese = [normalized[i : i + 2] for i in range(max(0, len(normalized) - 1))
                if "\u4e00" <= normalized[i] <= "\u9fff"]
     latin = re.findall(r"[a-z][a-z0-9_]{1,}|\d+(?:\.\d+)?", text.lower())
@@ -38,8 +38,13 @@ def _terms(text: str) -> list[str]:
 class KnowledgeBase:
     """Small, dependency-free BM25 retriever suitable for a local teaching app."""
 
-    def __init__(self, path: Path):
-        self.path = path
+    def __init__(self, path: Path | Iterable[Path]):
+        if isinstance(path, (str, Path)):
+            self.paths = (Path(path),)
+        else:
+            self.paths = tuple(Path(item) for item in path)
+        # Preserve the original public attribute for existing single-index callers.
+        self.path = self.paths[0] if len(self.paths) == 1 else self.paths
         self.chunks: list[Chunk] = []
         self.tokens: list[list[str]] = []
         self.term_counts: list[Counter[str]] = []
@@ -54,8 +59,10 @@ class KnowledgeBase:
 
     def reload(self) -> None:
         self.chunks = []
-        if self.path.exists():
-            with self.path.open("r", encoding="utf-8") as handle:
+        for path in self.paths:
+            if not path.exists():
+                continue
+            with path.open("r", encoding="utf-8") as handle:
                 for line in handle:
                     if line.strip():
                         self.chunks.append(Chunk.from_dict(json.loads(line)))

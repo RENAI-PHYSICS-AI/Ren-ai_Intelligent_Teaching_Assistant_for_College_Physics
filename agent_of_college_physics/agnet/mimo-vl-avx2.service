@@ -1,0 +1,46 @@
+[Unit]
+Description=MiMo-VL Miloco 7B AVX2 OpenAI-compatible API
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/physics-assistant/mimo-vl-avx2.env
+ExecStartPre=/usr/bin/test -x ${MIMO_VL_SERVER_BIN}
+ExecStartPre=/usr/bin/test -r ${MIMO_VL_MODEL_PATH}
+ExecStartPre=/usr/bin/test -r ${MIMO_VL_MMPROJ_PATH}
+ExecStart=/usr/bin/env numactl \
+  --physcpubind=${MIMO_VL_CPU_LIST} \
+  --membind=${MIMO_VL_NUMA_NODE} \
+  ${MIMO_VL_SERVER_BIN} \
+  --no-mmap \
+  --model ${MIMO_VL_MODEL_PATH} \
+  --mmproj ${MIMO_VL_MMPROJ_PATH} \
+  --alias ${MIMO_VL_MODEL_ALIAS} \
+  --host ${MIMO_VL_HOST} \
+  --port ${MIMO_VL_PORT} \
+  --ctx-size ${MIMO_VL_CTX_SIZE} \
+  --ctx-checkpoints 32 \
+  --parallel ${MIMO_VL_PARALLEL} \
+  --threads ${MIMO_VL_THREADS} \
+  --threads-batch ${MIMO_VL_THREADS_BATCH} \
+  --batch-size ${MIMO_VL_BATCH_SIZE} \
+  --ubatch-size ${MIMO_VL_UBATCH_SIZE} \
+  --cache-type-k f16 \
+  --cache-type-v f16 \
+  --flash-attn off \
+  --kv-offload \
+  --no-direct-io \
+  --n-gpu-layers 0 \
+  --kv-unified \
+  --jinja
+Restart=always
+RestartSec=15s
+TimeoutStopSec=300s
+KillSignal=SIGTERM
+UMask=0077
+NoNewPrivileges=true
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

@@ -13,6 +13,7 @@ using WGLMakie
 
 const DOM = Bonito.DOM
 const Slider = WGLMakie.Makie.Slider
+const Button = WGLMakie.Makie.Button
 
 # 2019 SI defines h and e exactly.  Keeping the exact constants in the model
 # makes the ideal h/e fit a useful regression test instead of a rounded target.
@@ -35,6 +36,7 @@ const GREEN = RGBf(0.36, 0.82, 0.55)
 const VIOLET = RGBf(0.61, 0.48, 0.92)
 const MUTED = RGBf(0.58, 0.62, 0.70)
 const PANEL_BG = RGBf(0.075, 0.085, 0.105)
+const BUTTON_BG = RGBf(0.13, 0.15, 0.19)
 const CJK_PROBE_TEXT = "光电效应可视化实验"
 const WGL_SHADER_FILES = (
     "mesh.frag",
@@ -220,6 +222,58 @@ function add_metrics!(grid, values, detail)
     return nothing
 end
 
+function bind_playback!(grid, row, playback_slider, playback_range, reset_values; step = 1)
+    playing = Observable(false)
+    playback_values = collect(playback_range)
+    numeric_values = Float64.(playback_values)
+    generation = Ref(0)
+    button_grid = GridLayout()
+    grid[1:max(row - 1, 2), 4] = button_grid
+    play_button = Button(
+        button_grid[1, 1],
+        label = "播放",
+        height = 31,
+        buttoncolor = BUTTON_BG,
+        labelcolor = :white,
+    )
+    reset_button = Button(
+        button_grid[2, 1],
+        label = "重置",
+        height = 31,
+        buttoncolor = BUTTON_BG,
+        labelcolor = :white,
+    )
+    rowgap!(button_grid, 8)
+    colsize!(grid, 4, Fixed(116))
+
+    on(play_button.clicks) do _
+        playing[] = !playing[]
+        generation[] += 1
+        current_generation = generation[]
+        play_button.label[] = playing[] ? "暂停" : "播放"
+        if playing[]
+            @async begin
+                while playing[] && generation[] == current_generation
+                    current = Float64(playback_slider.value[])
+                    index = argmin(abs.(numeric_values .- current))
+                    next_index = mod1(index + step, length(playback_values))
+                    set_close_to!(playback_slider, playback_values[next_index])
+                    sleep(0.03)
+                end
+            end
+        end
+    end
+    on(reset_button.clicks) do _
+        playing[] = false
+        generation[] += 1
+        play_button.label[] = "播放"
+        for (slider, value) in reset_values
+            set_close_to!(slider, value)
+        end
+    end
+    return nothing
+end
+
 function linear_fit(x, y)
     @assert length(x) == length(y) && length(x) >= 2
     x_mean = sum(x) / length(x)
@@ -362,6 +416,20 @@ function iv_figure()
             "同一频率下，光强只改变单位时间的光子数和光电流；三条曲线共享同一遏止电压。" :
             "当 hν ≤ φ 时不发生外光电效应；继续增强光强也不能让光电子逸出。"
     end
+    bind_playback!(
+        controls,
+        6,
+        selected_voltage,
+        -3.0:0.05:2.0,
+        [
+            (wavelength, 405),
+            (intensity, 80),
+            (work_function, 2.15),
+            (saturation, 80),
+            (selected_voltage, 0.50),
+        ];
+        step = 2,
+    )
     add_metrics!(metrics, values, detail)
     return figure
 end
@@ -469,6 +537,18 @@ function planck_figure()
             value.point_count,
         )
     end
+    bind_playback!(
+        controls,
+        5,
+        contact,
+        -0.30:0.01:0.30,
+        [
+            (work_function, 2.15),
+            (contact, 0.08),
+            (noise, 12),
+            (count, 5),
+        ],
+    )
     add_metrics!(metrics, values, detail)
     return figure
 end
@@ -610,6 +690,19 @@ function threshold_figure()
             "频率高于红限频率时，增强光强只增加光电子数；最大初动能仍由 hν-φ 决定。" :
             "当 λ ≥ λ₀ 时单个光子能量不足，即使增强光强也不会产生光电子。"
     end
+    bind_playback!(
+        controls,
+        6,
+        wavelength,
+        300:5:720,
+        [
+            (wavelength, 405),
+            (intensity, 70),
+            (work_function, 2.15),
+            (efficiency, 2.0),
+            (power, 1.0),
+        ],
+    )
     add_metrics!(metrics, values, detail)
     return figure
 end
@@ -776,6 +869,20 @@ function uncertainty_figure()
             value.observed_cutoff,
         )
     end
+    bind_playback!(
+        controls,
+        7,
+        wavelength,
+        320:5:500,
+        [
+            (wavelength, 405),
+            (work_function, 2.15),
+            (contact, 0.08),
+            (dark, 0.4),
+            (leakage, 0.10),
+            (noise, 0.20),
+        ],
+    )
     add_metrics!(metrics, values, detail)
     return figure
 end

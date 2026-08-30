@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "topic": "温度传感器特性的测定",
+  "category": "热学实验",
+  "measured_quantities": ["静态灵敏度", "非线性", "滞后", "时间常数", "合成不确定度"],
+  "sensor_families": ["Pt100 铂电阻", "热电偶"],
+  "routes": ["calibration", "response", "bridge", "uncertainty"],
+  "source_catalog": "sources.json",
+  "documents": ["温度传感器可视化实验方案.md", "温度传感器文献导读.md", "ref/README.md"],
+  "local_pdf_count": 6,
+  "core_reference_count": 10,
+  "knowledge_output": "agnet/knowledge_base/imports/temperature_sensor.jsonl"
+}

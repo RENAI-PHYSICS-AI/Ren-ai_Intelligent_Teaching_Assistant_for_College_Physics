@@ -58,6 +58,10 @@ class WebSearchTests(unittest.TestCase):
             self.assertEqual(web_search.search_web("动量守恒条件是什么？"), [])
         post.assert_not_called()
 
+    def test_explicit_network_information_request_triggers_search(self):
+        with patch.object(web_search, "setting", side_effect=setting_value):
+            self.assertTrue(web_search.should_search_web("请结合网络的信息生成一份试卷"))
+
     def test_time_sensitive_question_searches_and_sanitizes_results(self):
         payload = {"results": [
             {"title": "  Official   update ", "url": "https://example.edu/news", "content": "new\nresult"},

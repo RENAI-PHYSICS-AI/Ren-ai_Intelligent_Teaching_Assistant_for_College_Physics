@@ -22,6 +22,52 @@ from config import APP_DIR
 
 EXPERIMENT_ROOT = APP_DIR / "experiments"
 RUNTIME_DIR = APP_DIR / "runtime" / "experiments"
+EXPERIMENT_GROUPS: dict[str, tuple[str, ...]] = {
+    "力学实验": ("杨氏模量", "转动惯量", "粘滞系数测定"),
+    "热学实验": (
+        "固体比热容的测定",
+        "温度传感器特性的测定",
+        "固体热传导系数测定",
+    ),
+    "振动波动": ("声速测量", "李萨如图形"),
+    "电磁实验": (
+        "电子荷质比",
+        "惠斯通电桥测电阻",
+        "霍尔效应测磁场分布",
+        "铁磁滞回线测定与观察",
+    ),
+    "光学实验": (
+        "牛顿环",
+        "双棱镜干涉",
+        "薄透镜焦距的测定",
+        "三棱镜折射率测定",
+    ),
+    "近代物理实验": ("光电效应", "弗兰克-赫兹"),
+}
+EXPERIMENT_DISPLAY_NAMES = {
+    "双棱镜干涉": "双棱镜干涉测波长",
+}
+EXPERIMENT_CATEGORY_BY_NAME = {
+    experiment_name: category
+    for category, experiment_names in EXPERIMENT_GROUPS.items()
+    for experiment_name in experiment_names
+}
+DEFAULT_EXPERIMENT = EXPERIMENT_GROUPS["力学实验"][0]
+
+
+def normalize_experiment_selection(
+    category: str | None,
+    experiment_name: str | None,
+) -> tuple[str, str]:
+    """Return a valid category/experiment pair while preserving old sessions."""
+    if category in EXPERIMENT_GROUPS:
+        experiments = EXPERIMENT_GROUPS[category]
+        if experiment_name in experiments:
+            return category, experiment_name
+        return category, experiments[0]
+    if experiment_name in EXPERIMENT_CATEGORY_BY_NAME:
+        return EXPERIMENT_CATEGORY_BY_NAME[experiment_name], experiment_name
+    return EXPERIMENT_CATEGORY_BY_NAME[DEFAULT_EXPERIMENT], DEFAULT_EXPERIMENT
 
 
 @dataclass(frozen=True)
@@ -178,6 +224,176 @@ ROTATIONAL_INERTIA = ExperimentService(
     height=740,
 )
 
+VISCOSITY = ExperimentService(
+    key="viscosity",
+    title="粘滞系数测定实验",
+    project_dir=EXPERIMENT_ROOT / "viscosity",
+    web_path=EXPERIMENT_ROOT / "viscosity" / "web.jl",
+    port_env="PHYSICS_VISCOSITY_PORT",
+    default_port=9392,
+    julia_host_env="VISCOSITY_WEB_HOST",
+    julia_port_env="VISCOSITY_WEB_PORT",
+    julia_proxy_env="VISCOSITY_WEB_PROXY_URL",
+    ready_event="viscosity-wgl-ready",
+    failed_event="viscosity-wgl-failed",
+    identity_marker="physics-experiment:viscosity",
+    root_marker="粘滞系数",
+    height=740,
+)
+
+SPECIFIC_HEAT = ExperimentService(
+    key="specific_heat",
+    title="固体比热容的测定实验",
+    project_dir=EXPERIMENT_ROOT / "specific_heat",
+    web_path=EXPERIMENT_ROOT / "specific_heat" / "web.jl",
+    port_env="PHYSICS_SPECIFIC_HEAT_PORT",
+    default_port=9393,
+    julia_host_env="SPECIFIC_HEAT_WEB_HOST",
+    julia_port_env="SPECIFIC_HEAT_WEB_PORT",
+    julia_proxy_env="SPECIFIC_HEAT_WEB_PROXY_URL",
+    ready_event="specific-heat-wgl-ready",
+    failed_event="specific-heat-wgl-failed",
+    identity_marker="physics-experiment:specific-heat",
+    root_marker="固体比热容",
+    height=740,
+)
+
+FRANCK_HERTZ = ExperimentService(
+    key="franck_hertz",
+    title="弗兰克-赫兹实验",
+    project_dir=EXPERIMENT_ROOT / "franck_hertz",
+    web_path=EXPERIMENT_ROOT / "franck_hertz" / "web.jl",
+    port_env="PHYSICS_FRANCK_HERTZ_PORT",
+    default_port=9394,
+    julia_host_env="FRANCK_HERTZ_WEB_HOST",
+    julia_port_env="FRANCK_HERTZ_WEB_PORT",
+    julia_proxy_env="FRANCK_HERTZ_WEB_PROXY_URL",
+    ready_event="franck-hertz-wgl-ready",
+    failed_event="franck-hertz-wgl-failed",
+    identity_marker="physics-experiment:franck-hertz",
+    root_marker="弗兰克-赫兹",
+    height=740,
+)
+
+TEMPERATURE_SENSOR = ExperimentService(
+    key="temperature_sensor",
+    title="温度传感器特性的测定实验",
+    project_dir=EXPERIMENT_ROOT / "temperature_sensor",
+    web_path=EXPERIMENT_ROOT / "temperature_sensor" / "web.jl",
+    port_env="PHYSICS_TEMPERATURE_SENSOR_PORT",
+    default_port=9395,
+    julia_host_env="TEMPERATURE_SENSOR_WEB_HOST",
+    julia_port_env="TEMPERATURE_SENSOR_WEB_PORT",
+    julia_proxy_env="TEMPERATURE_SENSOR_WEB_PROXY_URL",
+    ready_event="temperature-sensor-wgl-ready",
+    failed_event="temperature-sensor-wgl-failed",
+    identity_marker="physics-experiment:temperature-sensor",
+    root_marker="温度传感器",
+    height=740,
+)
+
+WHEATSTONE_BRIDGE = ExperimentService(
+    key="wheatstone_bridge",
+    title="惠斯通电桥测电阻实验",
+    project_dir=EXPERIMENT_ROOT / "wheatstone_bridge",
+    web_path=EXPERIMENT_ROOT / "wheatstone_bridge" / "web.jl",
+    port_env="PHYSICS_WHEATSTONE_BRIDGE_PORT",
+    default_port=9396,
+    julia_host_env="WHEATSTONE_BRIDGE_WEB_HOST",
+    julia_port_env="WHEATSTONE_BRIDGE_WEB_PORT",
+    julia_proxy_env="WHEATSTONE_BRIDGE_WEB_PROXY_URL",
+    ready_event="wheatstone-bridge-wgl-ready",
+    failed_event="wheatstone-bridge-wgl-failed",
+    identity_marker="physics-experiment:wheatstone-bridge",
+    root_marker="惠斯通电桥",
+    height=740,
+)
+
+HALL_EFFECT = ExperimentService(
+    key="hall_effect",
+    title="霍尔效应测磁场分布实验",
+    project_dir=EXPERIMENT_ROOT / "hall_effect",
+    web_path=EXPERIMENT_ROOT / "hall_effect" / "web.jl",
+    port_env="PHYSICS_HALL_EFFECT_PORT",
+    default_port=9397,
+    julia_host_env="HALL_EFFECT_WEB_HOST",
+    julia_port_env="HALL_EFFECT_WEB_PORT",
+    julia_proxy_env="HALL_EFFECT_WEB_PROXY_URL",
+    ready_event="hall-effect-wgl-ready",
+    failed_event="hall-effect-wgl-failed",
+    identity_marker="physics-experiment:hall-effect",
+    root_marker="霍尔效应",
+    height=740,
+)
+
+MAGNETIC_HYSTERESIS = ExperimentService(
+    key="magnetic_hysteresis",
+    title="铁磁滞回线测定与观察实验",
+    project_dir=EXPERIMENT_ROOT / "magnetic_hysteresis",
+    web_path=EXPERIMENT_ROOT / "magnetic_hysteresis" / "web.jl",
+    port_env="PHYSICS_MAGNETIC_HYSTERESIS_PORT",
+    default_port=9398,
+    julia_host_env="MAGNETIC_HYSTERESIS_WEB_HOST",
+    julia_port_env="MAGNETIC_HYSTERESIS_WEB_PORT",
+    julia_proxy_env="MAGNETIC_HYSTERESIS_WEB_PROXY_URL",
+    ready_event="magnetic-hysteresis-wgl-ready",
+    failed_event="magnetic-hysteresis-wgl-failed",
+    identity_marker="physics-experiment:magnetic-hysteresis",
+    root_marker="铁磁滞回线",
+    height=740,
+)
+
+THIN_LENS_FOCAL = ExperimentService(
+    key="thin_lens_focal",
+    title="薄透镜焦距的测定实验",
+    project_dir=EXPERIMENT_ROOT / "thin_lens_focal",
+    web_path=EXPERIMENT_ROOT / "thin_lens_focal" / "web.jl",
+    port_env="PHYSICS_THIN_LENS_FOCAL_PORT",
+    default_port=9399,
+    julia_host_env="THIN_LENS_FOCAL_WEB_HOST",
+    julia_port_env="THIN_LENS_FOCAL_WEB_PORT",
+    julia_proxy_env="THIN_LENS_FOCAL_WEB_PROXY_URL",
+    ready_event="thin-lens-focal-wgl-ready",
+    failed_event="thin-lens-focal-wgl-failed",
+    identity_marker="physics-experiment:thin-lens-focal",
+    root_marker="薄透镜焦距",
+    height=740,
+)
+
+PRISM_REFRACTIVE_INDEX = ExperimentService(
+    key="prism_refractive_index",
+    title="三棱镜折射率测定实验",
+    project_dir=EXPERIMENT_ROOT / "prism_refractive_index",
+    web_path=EXPERIMENT_ROOT / "prism_refractive_index" / "web.jl",
+    port_env="PHYSICS_PRISM_REFRACTIVE_INDEX_PORT",
+    default_port=9400,
+    julia_host_env="PRISM_REFRACTIVE_INDEX_WEB_HOST",
+    julia_port_env="PRISM_REFRACTIVE_INDEX_WEB_PORT",
+    julia_proxy_env="PRISM_REFRACTIVE_INDEX_WEB_PROXY_URL",
+    ready_event="prism-refractive-index-wgl-ready",
+    failed_event="prism-refractive-index-wgl-failed",
+    identity_marker="physics-experiment:prism-refractive-index",
+    root_marker="三棱镜折射率",
+    height=740,
+)
+
+THERMAL_CONDUCTIVITY = ExperimentService(
+    key="thermal_conductivity",
+    title="固体热传导系数测定实验",
+    project_dir=EXPERIMENT_ROOT / "thermal_conductivity",
+    web_path=EXPERIMENT_ROOT / "thermal_conductivity" / "web.jl",
+    port_env="PHYSICS_THERMAL_CONDUCTIVITY_PORT",
+    default_port=9401,
+    julia_host_env="THERMAL_CONDUCTIVITY_WEB_HOST",
+    julia_port_env="THERMAL_CONDUCTIVITY_WEB_PORT",
+    julia_proxy_env="THERMAL_CONDUCTIVITY_WEB_PROXY_URL",
+    ready_event="thermal-conductivity-wgl-ready",
+    failed_event="thermal-conductivity-wgl-failed",
+    identity_marker="physics-experiment:thermal-conductivity",
+    root_marker="固体热传导系数",
+    height=740,
+)
+
 SERVICES = {
     service.key: service
     for service in (
@@ -189,6 +405,16 @@ SERVICES = {
         NEWTON_RINGS,
         YOUNG_MODULUS,
         ROTATIONAL_INERTIA,
+        VISCOSITY,
+        SPECIFIC_HEAT,
+        FRANCK_HERTZ,
+        TEMPERATURE_SENSOR,
+        WHEATSTONE_BRIDGE,
+        HALL_EFFECT,
+        MAGNETIC_HYSTERESIS,
+        THIN_LENS_FOCAL,
+        PRISM_REFRACTIVE_INDEX,
+        THERMAL_CONDUCTIVITY,
     )
 }
 _processes: dict[str, subprocess.Popen] = {}
@@ -441,23 +667,31 @@ def render_experiment_hub() -> None:
         unsafe_allow_html=True,
     )
 
-    if "visual_experiment_name" not in st.session_state:
-        st.session_state.visual_experiment_name = "李萨如图形"
+    selected_category, selected_name = normalize_experiment_selection(
+        st.session_state.get("visual_experiment_category"),
+        st.session_state.get("visual_experiment_name"),
+    )
+    st.session_state.visual_experiment_category = selected_category
+    st.session_state.visual_experiment_name = selected_name
+
+    category = st.segmented_control(
+        "实验类别",
+        list(EXPERIMENT_GROUPS),
+        key="visual_experiment_category",
+        width="stretch",
+    ) or selected_category
+    category_experiments = EXPERIMENT_GROUPS[category]
+    if st.session_state.visual_experiment_name not in category_experiments:
+        st.session_state.visual_experiment_name = category_experiments[0]
+        st.rerun()
+
     selected = st.segmented_control(
         "选择实验",
-        [
-            "李萨如图形",
-            "声速测量",
-            "电子荷质比",
-            "光电效应",
-            "双棱镜干涉",
-            "牛顿环",
-            "杨氏模量",
-            "转动惯量",
-        ],
+        category_experiments,
+        format_func=lambda name: EXPERIMENT_DISPLAY_NAMES.get(name, name),
         key="visual_experiment_name",
         width="stretch",
-    ) or "李萨如图形"
+    ) or category_experiments[0]
 
     if selected == "李萨如图形":
         st.markdown(
@@ -633,6 +867,64 @@ def render_experiment_hub() -> None:
             routes[experiment_name],
             f"牛顿环 · {experiment_name}",
         )
+    elif selected == "薄透镜焦距的测定":
+        st.markdown(
+            """
+            <div class="experiment-summary">
+              <h3>◉ 薄透镜焦距的测定实验</h3>
+              <p>比较物距—像距法、自准直法和贝塞尔位移法，并通过多组读数拟合与不确定度传播评定焦距。</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        routes = {
+            "物距—像距法": "/direct",
+            "自准直法": "/autocollimation",
+            "贝塞尔位移法": "/displacement",
+            "拟合与不确定度": "/uncertainty",
+        }
+        if "thin_lens_focal_experiment_name" not in st.session_state:
+            st.session_state.thin_lens_focal_experiment_name = "物距—像距法"
+        experiment_name = st.segmented_control(
+            "实验项目",
+            list(routes),
+            key="thin_lens_focal_experiment_name",
+            width="stretch",
+        ) or "物距—像距法"
+        _start_and_render(
+            THIN_LENS_FOCAL,
+            routes[experiment_name],
+            f"薄透镜焦距的测定 · {experiment_name}",
+        )
+    elif selected == "三棱镜折射率测定":
+        st.markdown(
+            """
+            <div class="experiment-summary">
+              <h3>△ 三棱镜折射率测定实验</h3>
+              <p>完成分光计调节、棱镜顶角测量、最小偏向角判定，并由不同谱线分析折射率、色散和不确定度。</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        routes = {
+            "分光计调节": "/collimation",
+            "棱镜顶角测量": "/apex",
+            "最小偏向角法": "/minimum-deviation",
+            "折射率、色散与不确定度": "/dispersion",
+        }
+        if "prism_refractive_index_experiment_name" not in st.session_state:
+            st.session_state.prism_refractive_index_experiment_name = "分光计调节"
+        experiment_name = st.segmented_control(
+            "实验项目",
+            list(routes),
+            key="prism_refractive_index_experiment_name",
+            width="stretch",
+        ) or "分光计调节"
+        _start_and_render(
+            PRISM_REFRACTIVE_INDEX,
+            routes[experiment_name],
+            f"三棱镜折射率测定 · {experiment_name}",
+        )
     elif selected == "杨氏模量":
         st.markdown(
             """
@@ -662,7 +954,7 @@ def render_experiment_hub() -> None:
             routes[experiment_name],
             f"杨氏模量 · {experiment_name}",
         )
-    else:
+    elif selected == "转动惯量":
         st.markdown(
             """
             <div class="experiment-summary">
@@ -691,6 +983,244 @@ def render_experiment_hub() -> None:
             routes[experiment_name],
             f"转动惯量 · {experiment_name}",
         )
+    elif selected == "粘滞系数测定":
+        st.markdown(
+            """
+            <div class="experiment-summary">
+              <h3>◉ 粘滞系数测定实验</h3>
+              <p>采用落球法研究斯托克斯阻力与终端速度，评估计时区间、Faxén 管壁修正、雷诺数，并通过多球线性拟合求液体动力黏度及其不确定度。</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        routes = {
+            "斯托克斯定律与受力平衡": "/stokes",
+            "终端速度与落球计时": "/terminal",
+            "容器壁面修正": "/correction",
+            "多球拟合与不确定度": "/fit",
+        }
+        if "viscosity_experiment_name" not in st.session_state:
+            st.session_state.viscosity_experiment_name = "斯托克斯定律与受力平衡"
+        experiment_name = st.segmented_control(
+            "实验项目",
+            list(routes),
+            key="viscosity_experiment_name",
+            width="stretch",
+        ) or "斯托克斯定律与受力平衡"
+        _start_and_render(
+            VISCOSITY,
+            routes[experiment_name],
+            f"粘滞系数测定 · {experiment_name}",
+        )
+    elif selected == "固体比热容的测定":
+        st.markdown(
+            """
+            <div class="experiment-summary">
+              <h3>♨ 固体比热容的测定实验</h3>
+              <p>综合研究混合法热量平衡、冷却修正、电热法能量输入，以及多组数据的线性拟合与不确定度评定。</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        routes = {
+            "混合法与热量平衡": "/mixing",
+            "冷却修正与热损失": "/cooling",
+            "电热法与能量输入": "/electrical",
+            "线性拟合与不确定度": "/fit",
+        }
+        if "specific_heat_experiment_name" not in st.session_state:
+            st.session_state.specific_heat_experiment_name = "混合法与热量平衡"
+        experiment_name = st.segmented_control(
+            "实验项目",
+            list(routes),
+            key="specific_heat_experiment_name",
+            width="stretch",
+        ) or "混合法与热量平衡"
+        _start_and_render(
+            SPECIFIC_HEAT,
+            routes[experiment_name],
+            f"固体比热容的测定 · {experiment_name}",
+        )
+    elif selected == "温度传感器特性的测定":
+        st.markdown(
+            """
+            <div class="experiment-summary">
+              <h3>🌡 温度传感器特性的测定实验</h3>
+              <p>以 Pt100 为主线，研究静态标定、阶跃响应、测量电桥与导线补偿，以及滞后、拟合和不确定度。</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        routes = {
+            "Pt100 静态标定与灵敏度": "/calibration",
+            "阶跃响应与时间常数": "/response",
+            "测量电桥、导线补偿与自热": "/bridge",
+            "滞后、拟合与不确定度": "/uncertainty",
+        }
+        if "temperature_sensor_experiment_name" not in st.session_state:
+            st.session_state.temperature_sensor_experiment_name = "Pt100 静态标定与灵敏度"
+        experiment_name = st.segmented_control(
+            "实验项目",
+            list(routes),
+            key="temperature_sensor_experiment_name",
+            width="stretch",
+        ) or "Pt100 静态标定与灵敏度"
+        _start_and_render(
+            TEMPERATURE_SENSOR,
+            routes[experiment_name],
+            f"温度传感器特性的测定 · {experiment_name}",
+        )
+    elif selected == "固体热传导系数测定":
+        st.markdown(
+            """
+            <div class="experiment-summary">
+              <h3>▥ 固体热传导系数测定实验</h3>
+              <p>从傅里叶定律出发，研究稳态导热、散热盘冷却修正、多工况线性拟合及热传导系数的不确定度。</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        routes = {
+            "稳态导热与温度梯度": "/steady-state",
+            "冷却曲线与散热修正": "/cooling",
+            "多工况线性拟合": "/fit",
+            "热传导系数与不确定度": "/uncertainty",
+        }
+        if "thermal_conductivity_experiment_name" not in st.session_state:
+            st.session_state.thermal_conductivity_experiment_name = "稳态导热与温度梯度"
+        experiment_name = st.segmented_control(
+            "实验项目",
+            list(routes),
+            key="thermal_conductivity_experiment_name",
+            width="stretch",
+        ) or "稳态导热与温度梯度"
+        _start_and_render(
+            THERMAL_CONDUCTIVITY,
+            routes[experiment_name],
+            f"固体热传导系数测定 · {experiment_name}",
+        )
+    elif selected == "惠斯通电桥测电阻":
+        st.markdown(
+            """
+            <div class="experiment-summary">
+              <h3>◇ 惠斯通电桥测电阻实验</h3>
+              <p>从零电流平衡条件出发，练习粗调与细调，比较桥路灵敏度和不确定度，并用多比率测量检验线性关系。</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        routes = {
+            "桥路原理与零电流平衡": "/principle",
+            "粗调细调与平衡读数": "/balance",
+            "灵敏度与不确定度": "/sensitivity",
+            "多比率测量与线性拟合": "/fit",
+        }
+        if "wheatstone_bridge_experiment_name" not in st.session_state:
+            st.session_state.wheatstone_bridge_experiment_name = "桥路原理与零电流平衡"
+        experiment_name = st.segmented_control(
+            "实验项目",
+            list(routes),
+            key="wheatstone_bridge_experiment_name",
+            width="stretch",
+        ) or "桥路原理与零电流平衡"
+        _start_and_render(
+            WHEATSTONE_BRIDGE,
+            routes[experiment_name],
+            f"惠斯通电桥测电阻 · {experiment_name}",
+        )
+    elif selected == "霍尔效应测磁场分布":
+        st.markdown(
+            """
+            <div class="experiment-summary">
+              <h3>⊕ 霍尔效应测磁场分布实验</h3>
+              <p>研究霍尔电压与磁场、电流和几何尺寸的关系，完成探头标定、沿轴扫描、线性拟合及不确定度评定。</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        routes = {
+            "霍尔电压标定": "/calibration",
+            "沿轴磁场分布扫描": "/scan",
+            "线性拟合与残差": "/fit",
+            "不确定度评定": "/uncertainty",
+        }
+        if "hall_effect_experiment_name" not in st.session_state:
+            st.session_state.hall_effect_experiment_name = "霍尔电压标定"
+        experiment_name = st.segmented_control(
+            "实验项目",
+            list(routes),
+            key="hall_effect_experiment_name",
+            width="stretch",
+        ) or "霍尔电压标定"
+        _start_and_render(
+            HALL_EFFECT,
+            routes[experiment_name],
+            f"霍尔效应测磁场分布 · {experiment_name}",
+        )
+    elif selected == "铁磁滞回线测定与观察":
+        st.markdown(
+            """
+            <div class="experiment-summary">
+              <h3>↔ 铁磁滞回线测定与观察实验</h3>
+              <p>观察基本磁滞回线与特征量，理解示波器法和积分器标定，模拟交流退磁，并分析磁滞损耗和不确定度。</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        routes = {
+            "基本磁滞回线与特征量": "/loop",
+            "示波器法与积分器标定": "/apparatus",
+            "交流退磁与剩磁衰减": "/demagnetization",
+            "损耗分离与不确定度": "/fit",
+        }
+        if "magnetic_hysteresis_experiment_name" not in st.session_state:
+            st.session_state.magnetic_hysteresis_experiment_name = "基本磁滞回线与特征量"
+        experiment_name = st.segmented_control(
+            "实验项目",
+            list(routes),
+            key="magnetic_hysteresis_experiment_name",
+            width="stretch",
+        ) or "基本磁滞回线与特征量"
+        _start_and_render(
+            MAGNETIC_HYSTERESIS,
+            routes[experiment_name],
+            f"铁磁滞回线测定与观察 · {experiment_name}",
+        )
+    elif selected == "弗兰克-赫兹":
+        st.markdown(
+            """
+            <div class="experiment-summary">
+              <h3>⚛ 弗兰克-赫兹实验</h3>
+              <p>依次研究实验装置与电子—原子碰撞、周期性峰谷曲线、第一激发电势的数据分析，以及拟合与不确定度评定。</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.warning(
+            "本实验页仅作数值仿真。真实汞管实验涉及有毒汞蒸气、高温和高压"
+            "（包括高温玻璃表面与高压电源），只能使用完好封装设备并按实验室规程操作。"
+        )
+        routes = {
+            "实验装置与能级跃迁": "/apparatus",
+            "周期性峰谷曲线": "/curve",
+            "激发电势分析": "/analysis",
+            "拟合与不确定度": "/uncertainty",
+        }
+        if "franck_hertz_experiment_name" not in st.session_state:
+            st.session_state.franck_hertz_experiment_name = "实验装置与能级跃迁"
+        experiment_name = st.segmented_control(
+            "实验项目",
+            list(routes),
+            key="franck_hertz_experiment_name",
+            width="stretch",
+        ) or "实验装置与能级跃迁"
+        _start_and_render(
+            FRANCK_HERTZ,
+            routes[experiment_name],
+            f"弗兰克-赫兹 · {experiment_name}",
+        )
+    else:
+        st.error("实验选择状态异常，请重新选择实验。")
 
 
 _EMBED_HTML = r"""

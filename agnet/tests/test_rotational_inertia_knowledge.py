@@ -299,7 +299,7 @@ class RotationalInertiaKnowledgeIntegrationTests(unittest.TestCase):
     def test_main_kb_contains_all_285_chunks_in_rigid_body_chapter(self):
         self.assertEqual(
             build_kb.IMPORTED_COLLECTIONS.get("rotational_inertia"),
-            ("转动惯量测定实验", "第5章 刚体力学"),
+            ("转动惯量测定实验", "第3章 刚体的定轴转动"),
         )
         imported = {
             entry.get("file"): entry
@@ -324,7 +324,7 @@ class RotationalInertiaKnowledgeIntegrationTests(unittest.TestCase):
             ]
         )
         for row in self.merged_rows:
-            self.assertEqual(row.get("chapter"), "第5章 刚体力学")
+            self.assertEqual(row.get("chapter"), "第3章 刚体的定轴转动")
             self.assertAlmostEqual(float(row.get("priority")), 0.9)
             self.assertTrue(
                 str(row.get("source_type", "")).startswith(
@@ -341,7 +341,7 @@ class RotationalInertiaKnowledgeIntegrationTests(unittest.TestCase):
         knowledge_base = KnowledgeBase(MAIN_CHUNKS_PATH)
         results = knowledge_base.search(
             "转动惯量 扭摆 三线摆 周期 平行轴定理 复摆 回转半径 不确定度",
-            chapter="第5章 刚体力学",
+            chapter="第3章 刚体的定轴转动",
             top_k=10,
         )
         self.assertTrue(results)

@@ -15,7 +15,7 @@
 - 流式讲解：支持连续对话、LaTeX 公式和回答位置跟随。
 - 安全可视化：模型生成结构化绘图规范，由本地校验后使用 Plotly 渲染。
 - 双学习模式：在侧栏切换“智能助教”和“可视化实验”。
-- 交互实验：Windows 主项目内置李萨如图形、声速测量、电子荷质比、光电效应、双棱镜干涉测波长、牛顿环、杨氏模量和转动惯量测定八套 Julia/WGLMakie 实验。
+- 交互实验：Windows 主项目内置十八套 Julia/WGLMakie 实验；本次新增薄透镜焦距、三棱镜折射率和固体热传导系数测定，进入可视化模式时默认打开“力学实验 → 杨氏模量”。
 - 用户系统：支持注册登录、匿名进入、历史恢复、按问答轮次删除及 Markdown 导出；未回答问题也可单独删除。
 - 管理后台：支持身份名册、学习活动、反馈和运行错误统计。
 - 主题与快捷操作：支持亮色、暗色、跟随系统以及随机快速提问。
@@ -32,16 +32,26 @@
 | 内容 | 数量 |
 | --- | ---: |
 | 扫描文件 | 668 |
-| 教学素材文本块 | 35,973 |
+| 教学素材文本块 | 35,967 |
 | 电子荷质比专题文本块 | 1,336 |
 | 李萨如专题文本块 | 10,122 |
 | 声速专题文本块 | 4,047 |
 | 光电效应专题文本块 | 301 |
 | 双棱镜干涉专题文本块 | 517 |
 | 牛顿环专题文本块 | 113 |
-| 杨氏模量专题文本块 | 354 |
+| 杨氏模量专题文本块 | 111 |
 | 转动惯量专题文本块 | 285 |
-| 合计文本块 | 53,048 |
+| 粘滞系数专题有效文本块 | 954 |
+| 固体比热容专题文本块 | 347 |
+| 弗兰克-赫兹专题文本块 | 503 |
+| 温度传感器专题有效文本块 | 559 |
+| 惠斯通电桥专题文本块 | 30 |
+| 霍尔效应专题文本块 | 694 |
+| 铁磁滞回线专题有效文本块 | 284 |
+| 薄透镜焦距专题有效文本块 | 634 |
+| 三棱镜折射率专题有效文本块 | 202 |
+| 固体热传导系数专题有效文本块 | 1,059 |
+| 合计文本块 | 58,065 |
 
 其中包括 114 个 PDF、145 个 PPT/PPTX/PPTM/POT 和 389 个 DOC/DOCX 文件。检索使用本地 BM25，并对中文文本加入相邻双字切分。教材正文优先，习题解答次之，其他教学资料和实验知识作为补充。
 
@@ -72,7 +82,7 @@ flowchart LR
     J --> K[Plotly 图表或动画演示]
     E --> L[(SQLite 用户、历史与学情数据)]
     M[管理员后台] --> L
-    E --> N[李萨如、声速、电子荷质比、光电效应、双棱镜、牛顿环、杨氏模量与转动惯量实验]
+    E --> N[力学、热学、振动波动、电磁、光学与近代物理共十八套实验]
 ```
 
 一次普通问答会经历以下过程：
@@ -102,7 +112,7 @@ flowchart LR
 │  ├─ voice_input.py        # 浏览器录音与流式转写组件
 │  ├─ asr_service.py        # Paraformer 内部 WebSocket 服务
 │  ├─ download_asr_model.py # 固定版本 INT8 模型下载与校验
-│  ├─ experiments/          # 八套 Julia/WGLMakie 实验
+│  ├─ experiments/          # 十八套 Julia/WGLMakie 实验
 │  ├─ storage.py            # 用户、会话和 Markdown 导出
 │  ├─ analytics_db.py       # 学情与反馈数据
 │  ├─ admin_api.py          # 管理员后台
@@ -154,7 +164,7 @@ Windows 版端口：
 | Streamlit 内部服务 | 仅监听本机 |
 | 管理员内部服务 | 仅监听本机 |
 | Paraformer 语音服务 | `127.0.0.1:8604`，由 `8501/asr/...` 代理 |
-| 八套可视化实验 | 仅监听本机，通过 `8501/experiments/...` 内嵌 |
+| 十八套可视化实验 | 仅监听本机，通过 `8501/experiments/...` 内嵌 |
 
 ### 模型及管理员配置
 
@@ -177,6 +187,13 @@ physics_ca_bundle = ".streamlit/physics-assistant-ca.crt"
 physics_context_window = "128000"
 physics_history_max_messages = "4"
 physics_max_output_tokens = "4096"
+physics_exam_base_url = ""
+physics_exam_model = ""
+physics_exam_api_key = ""
+physics_exam_no_think_suffix = ""
+physics_exam_timeout_seconds = "1800"
+physics_exam_context_window = "1048576"
+physics_exam_max_output_tokens = "32768"
 kb_context_max_chars = "2500"
 
 admin_username = "admin"
@@ -186,7 +203,7 @@ admin_token = "足够长的随机令牌"
 admin_login_url = "/admin-login"
 ```
 
-当前统一使用学校 Rocky 服务器 `tjracphy` 本机的 MiMo VL Miloco 7B，生产 API 标识为 `mimo-vl-local-prod`。普通问题直接由该模型回答；上传图片时先由同一模型提取题干、公式、图表和实验信息，再把识别文本与知识库结果交给同一模型组织最终答案。模型以 128K 上下文、4 个并行槽、无 TTL 方式常驻。Rocky 应用通过 `127.0.0.1:1235` 直连本机 LM Studio，不经过 LM Link；Windows 开发版通过服务器公开 API 入口调用同一个 Rocky 本地实例。
+当前统一使用学校 Rocky 服务器 `tjracphy` 本机的 MiMo VL Miloco 7B，生产 API 标识为 `mimo-vl-local-prod`。普通问题直接由该模型回答；上传图片时先由同一模型提取题干、公式、图表和实验信息，再把识别文本与知识库结果交给同一模型组织最终答案。MiMo 由独立用户级 systemd 服务以 128K 上下文、4 个并行槽常驻，监听 `127.0.0.1:1237`；教研考试则由 `127.0.0.1:1236` 的 DeepSeek 独立服务处理。两个服务均不经过 LM Link，Windows 开发版通过服务器公开 API 入口调用 Rocky 本地实例。
 
 Windows 与 Rocky 版本均已配置并启用 Tavily Search API 联网补充。普通教材概念、公式推导和计算题不会联网；问题明确要求联网，或包含“最新、近期、目前、进展、现行标准”等时效性表达时，应用才发送当前问题文本进行搜索。搜索结果经过清洗和长度限制后作为不可信外部参考交给 MiMo-VL，并在答案末尾附真实来源链接；搜索超时、额度不足或接口故障时自动退回本地知识库。结果在进程内缓存 30 分钟，用户身份、历史记录和图片不会发送给搜索服务。
 
@@ -215,6 +232,15 @@ Windows 与 Rocky 版本均已配置并启用 Tavily Search API 联网补充。�
 | `PHYSICS_CONTEXT_WINDOW` | 模型上下文窗口预算 |
 | `PHYSICS_HISTORY_MAX_MESSAGES` | 单次请求最多携带的历史消息数 |
 | `PHYSICS_MAX_OUTPUT_TOKENS` | 单次回答最大输出 token 数，当前为 4096；达到上限时自动续写一次 |
+| `PHYSICS_EXAM_BASE_URL` | 教研考试独立 OpenAI API；Rocky DeepSeek 服务为 `http://127.0.0.1:1236/v1` |
+| `PHYSICS_EXAM_MODEL` | 教研考试模型 ID；Rocky 为 `deepseek/deepseek-v4-flash-avx512` |
+| `PHYSICS_EXAM_API_KEY` | 教研考试 API key；留空时回退 `PHYSICS_API_KEY` |
+| `PHYSICS_EXAM_NO_THINK_SUFFIX` | 教研考试提示后缀；DeepSeek 必须留空，不使用 MiMo 的 `/no_think` |
+| `PHYSICS_EXAM_TIMEOUT_SECONDS` | 教研考试单轮结构化生成的读取及总耗时上限，当前为 1800 秒 |
+| `PHYSICS_EXAM_CONTEXT_WINDOW` | 教研考试上下文预算，当前为 1048576 token |
+| `PHYSICS_MODEL_STARTUP_TIMEOUT_SECONDS` | 两个大模型冷加载等待时间，默认 1800 秒 |
+| `PHYSICS_EXAM_MAX_OUTPUT_TOKENS` | 教研考试结构化试题、答案与评分标准最大输出，当前为 32768 token |
+| `PHYSICS_EXAM_GENERATION_ATTEMPTS` | 完整试卷生成次数，默认 1、上限 2；生产环境保持 1，避免校验失败后整卷静默重做 |
 | `PHYSICS_JULIA_EXE` | Julia 可执行文件路径 |
 | `PHYSICS_CJK_FONT` | Rocky 上可选的中文字体文件 |
 | `PHYSICS_ASR_THREADS` | Paraformer 单批 CPU 推理线程数，默认 4 |
@@ -231,18 +257,18 @@ Windows 与 Rocky 版本均已配置并启用 Tavily Search API 联网补充。�
 .\agnet\enable_lan.ps1
 ```
 
-脚本只为专用网络开放统一入口 `8501`。管理员页面和八套可视化实验均从主站内嵌访问，不再单独开放端口。其他设备访问 `http://Windows主机IP:8501`。
+脚本只为专用网络开放统一入口 `8501`。管理员页面和十八套可视化实验均从主站内嵌访问，不再单独开放端口。其他设备访问 `http://Windows主机IP:8501`。
 
 > Edge/Chrome 只允许安全来源调用麦克风。`http://localhost:8501` 可录音，但其他电脑通过普通 HTTP IP 地址访问时，语音按钮会提示需要 HTTPS；正式局域网语音输入应在统一入口配置客户端信任的 HTTPS 证书，WebSocket 会自动使用 WSS。
 
 ## Rocky Linux 10 独立版
 
-Rocky 版已包含应用、知识库、已整理教学素材与八套实验；用户、历史和其他运行数据仅可按受控流程另行迁移，不包含在公开源码中。它只安装在复制后的普通用户目录中：
+Rocky 版已包含应用、知识库、已整理教学素材与十八套实验；用户、历史和其他运行数据仅可按受控流程另行迁移，不包含在公开源码中。它只安装在复制后的普通用户目录中：
 
 - 不允许使用 `sudo` 或 root 执行；
 - 不写入 `/opt`、`/etc`、`/var` 或 `/usr/local`；
-- 不修改 systemd、Nginx、SELinux 或 firewalld；
-- Python、Julia、配置、日志和 PID 均保存在 `agent_of_college_physics` 目录内。
+- 主应用的 `install.sh` 不修改 systemd、Nginx、SELinux 或 firewalld；两个可选模型安装脚本只安装当前用户自己的 systemd unit；
+- 主应用的 Python、Julia、配置、日志和 PID 均保存在 `agent_of_college_physics` 目录内；MiMo 与 DeepSeek unit 及其 `0600` 配置保存在当前用户的 `~/.config/` 下。
 
 ### 复制与安装
 
@@ -270,7 +296,7 @@ bash install.sh
 PHYSICS_PUBLIC_BASE_URL=https://192.168.222.147:1234/agent
 ```
 
-该值用于让八套可视化实验、Paraformer 语音服务、持久登录和管理员页面正确生成带 `/agent/` 前缀的 HTTPS/WSS 地址，并校验浏览器看到的公开端口。项目自带的 `8443` HTTPS 网关只作为独立部署时的备用方案，当前未对校园网络开放。详细要求见 [Rocky 部署说明](agent_of_college_physics/README.md)。
+该值用于让十八套可视化实验、Paraformer 语音服务、持久登录和管理员页面正确生成带 `/agent/` 前缀的 HTTPS/WSS 地址，并校验浏览器看到的公开端口。项目自带的 `8443` HTTPS 网关只作为独立部署时的备用方案，当前未对校园网络开放。详细要求见 [Rocky 部署说明](agent_of_college_physics/README.md)。
 
 ### 服务管理
 
@@ -284,7 +310,7 @@ bash manage.sh check
 bash manage.sh logs
 ```
 
-Rocky 版不会注册系统级开机服务，服务器重启后需再次执行 `bash manage.sh start`。
+主应用不会注册系统级开机服务，服务器重启后需再次执行 `bash manage.sh start`。MiMo-VL 与 DeepSeek 均使用独立用户级 systemd unit；`manage.sh start` 幂等启动这两个 unit，并允许最长 1800 秒冷加载后验证各自 `/v1/models` 与模型别名，不再调用 `lms load`。
 
 Rocky 版使用目录内的 Python 网关提供内部 HTTP 上游，当前由学校 `1234` 反向代理统一提供生产 HTTPS/WSS；项目自带 HTTPS 网关仅作备用：
 
@@ -296,7 +322,7 @@ Rocky 版使用目录内的 Python 网关提供内部 HTTP 上游，当前由学
 | Streamlit 内部服务 | `127.0.0.1:8502` |
 | 管理员内部服务 | `127.0.0.1:8603` |
 | Paraformer 语音服务 | `127.0.0.1:8604`，仅由统一入口代理 |
-| 八套可视化实验 | 分别使用 `9384`–`9391`，仅监听 `127.0.0.1`，由统一入口代理 |
+| 十八套可视化实验 | 分别使用 `9384`–`9401`，仅监听 `127.0.0.1`，由统一入口代理 |
 
 安装脚本不会修改防火墙。当前校园网络只需访问已有的 TCP `1234` HTTPS 反向代理；不要向校园网络开放 `8501`、`8443`、Streamlit、管理员、ASR 或实验内部端口。
 
@@ -308,7 +334,33 @@ Rocky 模型配置位于：
 
 修改后执行 `bash manage.sh restart`。
 
-Rocky 安装脚本会在用户目录中准备 Python 3.13、项目虚拟环境、Julia 1.10.10 和 Julia depot。安装阶段需要访问 Python 包源与 Julia 官方下载站；回答阶段由应用按规则调用 Tavily API，并将清洗后的结果交给本地 GLM 组织答案，模型服务自身不负责网页检索，应用也不启动独立网页爬虫。
+MiMo-VL 与 DeepSeek V4 Flash 分别作为独立 OpenAI 兼容 API 运行。MiMo 监听 `127.0.0.1:1237`，使用 128K 上下文、4 个并行槽、配套 mmproj，并严格绑定 NUMA node 0、CPU `0-127`；DeepSeek 监听 `127.0.0.1:1236`，使用一个 1048576-token 槽并严格绑定 NUMA node 1、CPU `128-255`。MiMo 通过 `--no-mmap` 使用受 node 0 策略约束的匿名权重页；DeepSeek 通过 Direct I/O 绕过共享页缓存并直接在 node 1 分配权重：
+
+```bash
+cd ~/agent_of_college_physics
+bash agnet/install_mimo_vl_avx2_service.sh
+vi ~/.config/physics-assistant/mimo-vl-avx2.env
+bash agnet/install_mimo_vl_avx2_service.sh
+
+bash agnet/install_deepseek_avx512_service.sh
+vi ~/.config/physics-assistant/deepseek-avx512.env
+bash agnet/install_deepseek_avx512_service.sh
+```
+
+首次运行只创建权限为 `0600` 的配置并安装 unit，不会用空路径或空密钥启动。MiMo 使用现有 LM Studio AVX2 `llama-server` 二进制；DeepSeek 启用前还需确认 llama.cpp 已按本机 AVX-512 编译。完整步骤见 [DeepSeek V4 Flash AVX-512 后端部署与启动流程](AVX512后端部署与启动流程.md)。
+
+#### Rocky 模型后端升级与实测（2026-08-30）
+
+| 路由 | 当前后端与约束 | 生产验收结果 |
+| --- | --- | --- |
+| 普通问答与识图 | LM Studio AVX2 后端包 `llama.cpp-linux-x86_64-avx2@2.31.2`；其中 `llama-server` 自报 `0.3.0-dev`（build 1，commit `1844325`）；MiMo 128000-token 上下文、4 槽、NUMA0/CPU `0-127` | 中文问答、大学物理计算题、`/no_think` 生产输出和图片识别均通过；服务 `active/enabled`，测试后 PID 未变化、`NRestarts=0` |
+| 教研考试 | 自编译 `llama.cpp 0.3.0`（build 1，commit `c1d0e7a`），已确认生成 AVX-512 指令；DeepSeek 1048576-token 上下文、单槽、NUMA1/CPU `128-255` | 中文问答、物理计算、严格 JSON 和可编译 TeX 输出均通过；两个并发请求按单槽串行完成，应用级组卷锁覆盖生成与局部修复；服务 `active/enabled`，`NRestarts=0` |
+
+本轮热态烟测中，MiMo 的基础问答、物理计算和简单识图分别约为 5.87 秒、15.08 秒和 1.65 秒，短 `/no_think` 回答约为 0.30 秒；DeepSeek 的基础问答、物理计算、严格 JSON 和 TeX 测试分别约为 7.64 秒、20.93 秒、3.96 秒和 19.29 秒。提示长度和输出长度各不相同，这些数字只作为本次升级后的回归基线，不是响应时延承诺；测试过程中两个服务均未使用交换内存。
+
+两条 API 都要求鉴权，无效密钥返回 HTTP 401。`lms ps` 只列出由 LM Studio llmster 管理的实例，因此看不到这两个由用户级 systemd 直接启动的常驻进程；请以 `systemctl --user status mimo-vl-avx2.service deepseek-avx512.service`、`/v1/models` 和 `/v1/slots` 为准。复杂图片定位任务建议把 MiMo 的 `--image-min-tokens` 调整为至少 `1024`。新版 LM Studio 后端已提示 `--no-mmap`、`--no-direct-io` 为兼容参数；迁移到 `--load-mode dio` 前应重新做冷启动、NUMA 内存归属和识图回归测试。
+
+Rocky 安装脚本会在用户目录中准备 Python 3.13、项目虚拟环境、Julia 1.10.10 和 Julia depot。安装阶段需要访问 Python 包源与 Julia 官方下载站；回答阶段由应用按规则调用 Tavily API，并将清洗后的结果交给本地 MiMo-VL 组织答案，模型服务自身不负责网页检索，应用也不启动独立网页爬虫。
 
 安装器还会从固定版本的 Sherpa-ONNX 模型仓库下载三个经过 SHA-256 校验的 Paraformer INT8 文件，总计约 226.5 MiB；不会保留 1 GiB 的完整模型归档或 FP32 文件。
 
@@ -324,9 +376,12 @@ Rocky 安装脚本会在用户目录中准备 Python 3.13、项目虚拟环境�
 
 首次打开主页会先显示登录入口：
 
-- **注册用户**：登录后持续保存对话历史，可按轮次同时删除问题和回答，也可删除未回答的问题、恢复会话并导出 Markdown；浏览器使用签名的 HttpOnly Cookie 保持登录，刷新页面不会要求重新输入密码，默认有效期为 7 天；
+- **注册用户**：登录后持续保存对话历史，可按轮次同时删除问题和回答，也可删除未回答的问题、恢复会话并导出 Markdown；完成名册身份核验后，原用户名与学号/工号均可作为登录名，密码和历史记录保持不变；浏览器使用签名的 HttpOnly Cookie 保持登录，刷新页面不会要求重新输入密码，默认有效期为 7 天；
+- **已核验教师**：登录后先选择“智能助教”或“教研考试”。前者保持现有课程问答、识图和可视化实验；后者复用全部公共知识库，可完成命题蓝图、组卷、专项出题、参考答案、解析和评分标准。两个入口的历史记录相互隔离；
 - **匿名用户**：无需注册即可进入，消息只在当前浏览器会话中保留，也可按同样规则删除问答或手动导出 Markdown；
 - **管理员用户**：在同一登录页面验证账号后跳转管理员页面。
+
+教研考试生成整套试卷前会核验学年、学期和考试名称；缺少任一项时先请教师补充，考试日期允许留空且不会由模型猜测。只有明确指定补考时标题才保留“补考”。大学物理1和大学物理A的命题范围明确排除相对论内容。整卷大题编号连续为一至七：单选、填空分别为一、二，五道计算题分别为三至七；每道计算题都有独立知识主题标题与“共10分”标记，五题主题顺序可按蓝图调整。试卷固定生成三张物理页，每页具有框外页眉、独立2pt黑色外框和双栏题面；选择题、填空题及五道计算题按标准模板显式换栏、分页，计算题之间预留学生书写空间。结构化回退还会在编译前检查各题及各栏文本预算，超长题面会被拒绝并要求精简，避免 TeX 拆页卡死。题图优先用受限 TikZ 绘制；若引用标准模板中的可信图片，服务器会把 TeX、PDF 与实际图件一并生成完整 ZIP。
 
 注册用户的保持登录令牌不包含密码，由服务器签名，并在 HTTPS 下自动设置 `Secure` 属性；退出登录会同步清除浏览器 Cookie。Rocky 可通过 `PHYSICS_USER_SESSION_SECONDS` 调整有效期，允许范围为 1 小时至 30 天。
 
@@ -349,7 +404,7 @@ Windows 版管理员 API 默认仅监听 `127.0.0.1:8603`。Rocky 版由内部 `
 
 每次新问答的分阶段响应耗时仅在管理员页面显示，学生界面不展示开发联调数据；管理员可查看最近 30 次问答的知识检索、上下文拼装、历史加载、首段答案、模型生成和端到端耗时。
 
-历史消息会受到上下文预算限制：数据库仍长期保留完整记录，但默认只向模型发送最近两轮完整问答（4 条消息），并将知识库上下文控制在 2500 字符以内。普通回答默认最多生成 1024 token，并提示模型优先在 600～800 个中文字符内完整作答。这能保留追问所需语境，同时显著缩短本地模型的提示词处理和生成时间。
+历史消息会受到上下文预算限制：数据库仍长期保留完整记录，但默认只向模型发送最近两轮完整问答（4 条消息），并将普通助教的知识库上下文控制在 2500 字符以内。模型当前最多生成 4096 token；普通助教仍优先在 600～800 个中文字符内完整作答，教研考试则可按组卷任务适当展开。教研考试检索最多 12 个相关文本块，并至少预留 8000 字符的知识库上下文。
 
 ## 重新构建知识库
 
@@ -367,6 +422,20 @@ cd ~/agent_of_college_physics
 ./agnet/.venv/bin/python ./agnet/build_kb.py
 ```
 
+教师后续新增的考试、命题规范或题库资料应放入 `教学素材/教师专用/教研考试/`，再单独构建教师私有索引。该目录和生成的私有索引均被 Git 忽略，也不会进入学生端公共知识库：
+
+```powershell
+cd .\agnet
+.\.venv\Scripts\python.exe .\build_teacher_exam_kb.py
+```
+
+```bash
+cd ~/agent_of_college_physics
+./agnet/.venv/bin/python ./agnet/build_teacher_exam_kb.py
+```
+
+私有构建结果位于 `agnet/knowledge_base/private/teacher_exam.jsonl`。教研考试智能体会将它与现有 `chunks.jsonl` 合并检索；私有索引尚未生成时自动只使用公共知识库。
+
 构建结果位于 `agnet/knowledge_base/`：
 
 - `chunks.jsonl`：可检索文本块；
@@ -379,8 +448,31 @@ cd ~/agent_of_college_physics
 - `imports/newton_rings.jsonl`：牛顿环等厚干涉、半波损失、读数显微镜、逐差法、曲率半径线性拟合与不确定度专题知识。
 - `imports/young_modulus.jsonl`：金属丝静态拉伸、光杠杆放大、加载与卸载、力—伸长拟合、杨氏模量与不确定度专题知识。
 - `imports/rotational_inertia.jsonl`：扭摆、三线摆、平行轴定理、复摆周期拟合、转动惯量与不确定度专题知识。
+- `imports/temperature_sensor.jsonl`：Pt100 标定、阶跃响应、电桥补偿、自热、滞后及不确定度专题知识。
+- `imports/wheatstone_bridge.jsonl`：零电流平衡、戴维南等效、灵敏度和多比率拟合专题知识。
+- `imports/hall_effect.jsonl`：霍尔探头标定、沿轴磁场扫描、拟合残差和不确定度专题知识。
+- `imports/magnetic_hysteresis.jsonl`：磁滞回线、矫顽力、剩磁、交流退磁、积分器和磁滞损耗专题知识。
+- `imports/viscosity.jsonl`：斯托克斯落球法、终端速度、雷诺数、有限圆筒修正、多直径拟合、粘滞系数与不确定度专题知识。
+- `imports/specific_heat.jsonl`：混合法热平衡、冷却修正、电加热法、比热容拟合与不确定度专题知识。
+- `imports/franck_hertz.jsonl`：弗兰克-赫兹装置、电子—原子非弹性碰撞、周期性峰谷曲线、激发电势分析与不确定度专题知识。
+- `imports/thin_lens_focal.jsonl`：薄透镜成像公式、物距—像距法、自准直法、贝塞尔位移法、焦距拟合与不确定度专题知识。
+- `imports/prism_refractive_index.jsonl`：分光计调节、棱镜顶角、最小偏向角、折射率、色散与不确定度专题知识。
+- `imports/thermal_conductivity.jsonl`：傅里叶定律、稳态导热、冷却散热修正、多工况拟合、热传导系数与不确定度专题知识。
 
 转动惯量专题的可视化方案、约 10 篇核心参考题录和 8 份本地核验 PDF 位于 `教学素材/物理实验/转动惯量测定/`。单独更新该专题时先运行 `agnet/build_rotational_inertia_import.py`，再用下述合并命令刷新主知识库。
+
+粘滞系数专题的可视化方案、约 10 篇经典参考题录和可追溯本地资料位于 `教学素材/物理实验/粘滞系数测定/`。单独更新该专题时先运行 `agnet/build_viscosity_import.py`，再用下述合并命令刷新主知识库。
+
+固体比热容专题的可视化方案、约 10 篇经典参考题录和可追溯本地资料位于 `教学素材/物理实验/固体比热容的测定/`。单独更新该专题时先运行 `agnet/build_specific_heat_import.py`，再用下述合并命令刷新主知识库；最终文本块数以 `agnet/knowledge_base/manifest.json` 为准。
+
+弗兰克-赫兹专题的 10 篇核心文献、6 份 PDF、3 份 Markdown、合计 9 份导入文档和 503 个专题文本块位于 `教学素材/物理实验/弗兰克-赫兹实验/` 与 `agnet/knowledge_base/imports/franck_hertz.*`。单独重建并合并该专题时执行：
+
+```powershell
+.\.venv\Scripts\python.exe .\build_franck_hertz_import.py
+.\.venv\Scripts\python.exe .\build_kb.py --merge-imports-only
+```
+
+薄透镜焦距、三棱镜折射率和固体热传导系数三个专题各整理约 10 篇经典或权威文献，并分别位于 `教学素材/物理实验/薄透镜焦距的测定/`、`教学素材/物理实验/三棱镜折射率测定/` 和 `教学素材/物理实验/固体热传导系数测定/`。单独重建时运行对应的 `build_thin_lens_focal_import.py`、`build_prism_refractive_index_import.py` 或 `build_thermal_conductivity_import.py`，再执行 `build_kb.py --merge-imports-only`。
 
 若只更新了专题索引，Windows 可运行：
 
@@ -394,6 +486,8 @@ cd ~/agent_of_college_physics
 
 首页侧栏切换到“可视化实验”后可选择：
 
+力学实验分组包含杨氏模量、转动惯量和粘滞系数测定；热学实验分组包含固体比热容、温度传感器和固体热传导系数测定；光学实验分组包含牛顿环、双棱镜干涉、薄透镜焦距和三棱镜折射率测定；近代物理实验分组包含光电效应和弗兰克-赫兹实验；其余实验按振动波动和电磁分组显示。
+
 - 李萨如图形：相位差、振幅比、有理频率比和频率失谐；
 - 声速测量：回声法、双麦克风时差法、示波器相位差法和驻波法。
 - 电子荷质比：电子束圆轨道、亥姆霍兹磁场标定、纵向磁聚焦和汤姆孙交叉电磁场。
@@ -402,8 +496,20 @@ cd ~/agent_of_college_physics
 - 牛顿环等厚干涉：半波损失与环纹形成、读数显微镜单向扫描、15 级逐差法、直径平方线性拟合与不确定度。
 - 杨氏模量测定：光杠杆微小伸长放大、加载与卸载读数、力—伸长线性拟合、杨氏模量与不确定度。
 - 转动惯量测定：扭摆法、三线摆法、平行轴定理验证，以及摆动周期拟合与不确定度。
+- 粘滞系数测定：斯托克斯落球、终端速度判据、有限圆筒修正、多直径拟合与不确定度。
+- 固体比热容的测定：混合法热平衡、冷却散热修正、电加热法、多次数据拟合与不确定度。
+- 弗兰克-赫兹实验：实验装置与能级跃迁、周期性峰谷曲线、激发电势分析、拟合与不确定度。
+- 温度传感器特性的测定：Pt100 静态标定、阶跃响应、电桥与导线补偿、滞后与不确定度。
+- 惠斯通电桥测电阻：零电流平衡、粗调细调、灵敏度与不确定度、多比率线性拟合。
+- 霍尔效应测磁场分布：霍尔电压标定、沿轴扫描、线性拟合与残差、不确定度评定。
+- 铁磁滞回线测定与观察：基本磁滞回线、示波器法与积分器、交流退磁、损耗与不确定度。
+- 薄透镜焦距的测定：物距—像距法、自准直法、贝塞尔位移法、拟合与不确定度。
+- 三棱镜折射率测定：分光计调节、棱镜顶角测量、最小偏向角法、色散与不确定度。
+- 固体热传导系数测定：稳态导热与温度梯度、冷却散热修正、多工况拟合与不确定度。
 
-八类实验均拆分为四个独立页面，只构建和加载当前选中的页面：李萨如为 `/phase`、`/amplitude`、`/ratio`、`/detune`；声速为 `/echo`、`/dual`、`/phase`、`/standing`；电子荷质比为 `/circular`、`/helmholtz`、`/focus`、`/thomson`；光电效应为 `/iv`、`/planck`、`/threshold`、`/uncertainty`；双棱镜为 `/geometry`、`/fringes`、`/separation`、`/wavelength`；牛顿环为 `/formation`、`/measurement`、`/difference`、`/fit`；杨氏模量为 `/principle`、`/loading`、`/fit`、`/uncertainty`；转动惯量为 `/torsion`、`/trifilar`、`/parallel-axis`、`/pendulum-fit`。双棱镜和牛顿环均以 `589.3 nm` 钠黄光为教学参考值。
+十八类实验均拆分为四个独立页面，只构建和加载当前选中的页面。最新三项路由分别为：薄透镜 `/direct`、`/autocollimation`、`/displacement`、`/uncertainty`；三棱镜 `/collimation`、`/apex`、`/minimum-deviation`、`/dispersion`；固体热传导 `/steady-state`、`/cooling`、`/fit`、`/uncertainty`。其余路由保持不变，双棱镜和牛顿环均以 `589.3 nm` 钠黄光为教学参考值。
+
+弗兰克-赫兹实验的公开基路径为 `/experiments/franck-hertz`，内部服务只监听 `127.0.0.1:9394`。
 
 实验按需启动，主要图形在客户端浏览器通过 WebGL2 渲染。Windows 首次使用前可手动初始化：
 
@@ -417,11 +523,21 @@ julia --project=experiments/biprism -e "using Pkg; Pkg.instantiate(); Pkg.precom
 julia --project=experiments/newton_rings -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
 julia --project=experiments/young_modulus -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
 julia --project=experiments/rotational_inertia -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
+julia --project=experiments/viscosity -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
+julia --project=experiments/specific_heat -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
+julia --project=experiments/franck_hertz -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
+julia --project=experiments/temperature_sensor -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
+julia --project=experiments/wheatstone_bridge -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
+julia --project=experiments/hall_effect -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
+julia --project=experiments/magnetic_hysteresis -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
+julia --project=experiments/thin_lens_focal -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
+julia --project=experiments/prism_refractive_index -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
+julia --project=experiments/thermal_conductivity -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
 ```
 
 实验依赖清单按 Julia 1.10.10 生成。若 Juliaup 的全局默认版本较新，项目启动器会优先使用本机已安装的 `+1.10.10` 通道而不修改全局默认值；也可用 `PHYSICS_JULIA_EXE` 指定可执行文件，或用 `PHYSICS_JULIA_CHANNEL` 指定 Juliaup 通道。
 
-当前 Rocky 目录已同步全部八套实验；转动惯量测定使用 `9391` 回环端口，通过 `/experiments/rotational-inertia` 代理四个独立页面。所有实验只使用独立回环端口，并由启动器统一完成依赖预编译、自检、进程停止和健康检查。
+Rocky 目录已同步全部十八套实验。最新三项分别使用 `9399`–`9401`，经 `/experiments/thin-lens-focal`、`/experiments/prism-refractive-index` 和 `/experiments/thermal-conductivity` 代理。所有实验只使用独立回环端口，并由启动器统一完成依赖预编译、自检、进程停止和健康检查。
 
 ## 对话内可视化
 

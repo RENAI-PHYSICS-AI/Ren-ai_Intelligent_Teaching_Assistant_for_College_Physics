@@ -13,6 +13,7 @@ using WGLMakie
 
 const DOM = Bonito.DOM
 const Slider = WGLMakie.Makie.Slider
+const Button = WGLMakie.Makie.Button
 
 # Sodium D-line vacuum wavelengths and the nominal value used by the teaching
 # experiment.  The unknown wavelength is never exposed as a UI control: all
@@ -41,6 +42,7 @@ const GREEN = RGBf(0.36, 0.82, 0.55)
 const VIOLET = RGBf(0.61, 0.48, 0.92)
 const MUTED = RGBf(0.58, 0.62, 0.70)
 const PANEL_BG = RGBf(0.075, 0.085, 0.105)
+const BUTTON_BG = RGBf(0.13, 0.15, 0.19)
 const CJK_PROBE_TEXT = "双棱镜干涉测量钠黄光波长"
 const WGL_SHADER_FILES = (
     "mesh.frag",
@@ -238,6 +240,58 @@ function add_metrics!(grid, values, detail)
     return nothing
 end
 
+function bind_playback!(grid, row, playback_slider, playback_range, reset_values; step = 1)
+    playing = Observable(false)
+    playback_values = collect(playback_range)
+    numeric_values = Float64.(playback_values)
+    generation = Ref(0)
+    button_grid = GridLayout()
+    grid[1:max(row - 1, 2), 4] = button_grid
+    play_button = Button(
+        button_grid[1, 1],
+        label = "播放",
+        height = 31,
+        buttoncolor = BUTTON_BG,
+        labelcolor = :white,
+    )
+    reset_button = Button(
+        button_grid[2, 1],
+        label = "重置",
+        height = 31,
+        buttoncolor = BUTTON_BG,
+        labelcolor = :white,
+    )
+    rowgap!(button_grid, 8)
+    colsize!(grid, 4, Fixed(116))
+
+    on(play_button.clicks) do _
+        playing[] = !playing[]
+        generation[] += 1
+        current_generation = generation[]
+        play_button.label[] = playing[] ? "暂停" : "播放"
+        if playing[]
+            @async begin
+                while playing[] && generation[] == current_generation
+                    current = Float64(playback_slider.value[])
+                    index = argmin(abs.(numeric_values .- current))
+                    next_index = mod1(index + step, length(playback_values))
+                    set_close_to!(playback_slider, playback_values[next_index])
+                    sleep(0.03)
+                end
+            end
+        end
+    end
+    on(reset_button.clicks) do _
+        playing[] = false
+        generation[] += 1
+        play_button.label[] = "播放"
+        for (slider, value) in reset_values
+            set_close_to!(slider, value)
+        end
+    end
+    return nothing
+end
+
 function linear_fit(x, y)
     length(x) == length(y) || throw(ArgumentError("拟合数据长度不一致"))
     length(x) >= 3 || throw(ArgumentError("线性拟合至少需要三个测量点"))
@@ -375,6 +429,18 @@ function geometry_figure()
         Observable(@sprintf("λ参考 = %.1f nm", SODIUM_REFERENCE_NM)),
     )
     detail = Observable("采用小角度近似 d≈2a(n−1)α；钠黄光由 D₂、D₁ 双线组成，教学标称波长为 589.3 nm。")
+    bind_playback!(
+        controls,
+        5,
+        prism_angle,
+        0.25:0.025:0.80,
+        [
+            (slit_distance, 10),
+            (refractive_index, 1.515),
+            (prism_angle, 0.50),
+            (screen_distance, 0.90),
+        ],
+    )
     add_metrics!(metrics, values, detail)
     return figure
 end
@@ -464,6 +530,18 @@ function fringes_figure()
         lift(value -> @sprintf("拍长 = %.1f mm", value.beat_length_mm), data),
     )
     detail = Observable("钠 D₂、D₁ 线按约 2:1 强度叠加；相消处仍保留 1/3 包络可见度，不会降为零。")
+    bind_playback!(
+        controls,
+        5,
+        source_separation,
+        separation_values,
+        [
+            (source_separation, DEFAULT_SOURCE_SEPARATION_MM),
+            (screen_distance, 0.90),
+            (visibility, 90),
+            (span, 5.0),
+        ],
+    )
     add_metrics!(metrics, values, detail)
     return figure
 end
@@ -604,6 +682,18 @@ function separation_figure()
             ) :
             "D≤4f 时薄透镜方程没有两个不同的实数共轭位置，不能用二次成像法测量虚光源间距。"
     end
+    bind_playback!(
+        controls,
+        5,
+        object_screen_distance,
+        0.50:0.05:1.50,
+        [
+            (object_screen_distance, 0.90),
+            (focal_length, 0.20),
+            (source_separation, DEFAULT_SOURCE_SEPARATION_MM),
+            (reading_uncertainty, 10),
+        ],
+    )
     add_metrics!(metrics, values, detail)
     return figure
 end
@@ -727,6 +817,19 @@ function wavelength_figure()
             value.reference_error_percent,
         )
     end
+    bind_playback!(
+        controls,
+        6,
+        screen_distance,
+        0.50:0.05:1.80,
+        [
+            (screen_distance, 0.90),
+            (image_1, DEFAULT_SOURCE_SEPARATION_MM / 2.0),
+            (image_2, 2.0 * DEFAULT_SOURCE_SEPARATION_MM),
+            (half_order, 8),
+            (reading_noise, 8),
+        ],
+    )
     add_metrics!(metrics, values, detail)
     return figure
 end

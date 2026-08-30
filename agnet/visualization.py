@@ -459,6 +459,7 @@ def render_visualizations(
                             file_name=f"physics_animation.{media_format}", mime=mime,
                             key=f"{widget_prefix}physics_media_{media_format}_{index}_{abs(hash(json.dumps(spec, sort_keys=True, ensure_ascii=False)))}",
                             use_container_width=True,
+                            on_click="ignore",
                         )
         except Exception as exc:
             st.warning(f"可视化生成失败：{exc}")

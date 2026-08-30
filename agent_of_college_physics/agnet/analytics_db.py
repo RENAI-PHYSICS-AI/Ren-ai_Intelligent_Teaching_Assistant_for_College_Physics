@@ -79,6 +79,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS interactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             session_id TEXT NOT NULL,
+            agent_mode TEXT NOT NULL DEFAULT 'assistant',
             timestamp TEXT NOT NULL,
             question TEXT NOT NULL,
             answer TEXT,
@@ -135,6 +136,12 @@ def init_db():
     _ensure_column(conn, "sessions", "last_seen", "TEXT")
     _ensure_column(conn, "interactions", "user_id", "INTEGER")
     _ensure_column(conn, "interactions", "timing_details", "TEXT")
+    _ensure_column(
+        conn,
+        "interactions",
+        "agent_mode",
+        "TEXT NOT NULL DEFAULT 'assistant'",
+    )
     _ensure_column(conn, "error_log", "user_id", "INTEGER")
     _ensure_column(conn, "feedback", "user_id", "INTEGER")
     _ensure_column(conn, "users", "identity_type", "TEXT")
@@ -155,6 +162,10 @@ def init_db():
     conn.execute("UPDATE users SET display_name=username WHERE display_name IS NULL OR display_name='' ")
     conn.execute("UPDATE users SET role='student' WHERE role IS NULL OR role='' ")
     conn.execute("UPDATE users SET is_active=1 WHERE is_active IS NULL")
+    conn.execute(
+        "UPDATE interactions SET agent_mode='assistant' "
+        "WHERE agent_mode IS NULL OR TRIM(agent_mode)=''"
+    )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_interactions_user ON interactions(user_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_roster_identity ON identity_roster(identity_type, institutional_id)")
@@ -169,18 +180,30 @@ def init_db():
     if "messages" in tables:
         message_columns = {row["name"] for row in conn.execute("PRAGMA table_info(messages)")}
         if "interaction_id" in message_columns:
+            agent_mode_select = (
+                "agent_mode" if "agent_mode" in message_columns
+                else "'assistant' AS agent_mode"
+            )
             rows = conn.execute(
-                """SELECT id, user_id, role, content, created_at, interaction_id
-                   FROM messages ORDER BY user_id, id"""
+                f"""SELECT id, user_id, agent_mode, role, content, created_at,
+                           interaction_id
+                    FROM (
+                        SELECT id, user_id, {agent_mode_select}, role, content,
+                               created_at, interaction_id
+                        FROM messages
+                    )
+                    ORDER BY user_id, agent_mode, id"""
             ).fetchall()
             pending_questions = {}
             migrated_counts = {}
             for message in rows:
                 user_id = message["user_id"]
+                agent_mode = str(message["agent_mode"] or "assistant").strip() or "assistant"
+                pending_key = (user_id, agent_mode)
                 if message["role"] == "user":
-                    pending_questions[user_id] = message
+                    pending_questions[pending_key] = message
                     continue
-                question = pending_questions.pop(user_id, None)
+                question = pending_questions.pop(pending_key, None)
                 if not question or message["interaction_id"]:
                     continue
                 session_id = f"legacy_user_{user_id}"
@@ -192,11 +215,14 @@ def init_db():
                 )
                 cursor = conn.execute(
                     """INSERT INTO interactions
-                       (session_id, timestamp, question, answer, chapter, provider, model,
+                       (session_id, agent_mode, timestamp, question, answer,
+                        chapter, provider, model,
                         tokens_input, tokens_output, response_time_ms, question_length,
                         answer_length, user_id)
-                       VALUES (?, ?, ?, ?, '历史记录', 'legacy', '历史导入', ?, ?, 0, ?, ?, ?)""",
-                    (session_id, message["created_at"], question["content"], message["content"],
+                       VALUES (?, ?, ?, ?, ?, '历史记录', 'legacy', '历史导入',
+                               ?, ?, 0, ?, ?, ?)""",
+                    (session_id, agent_mode, message["created_at"],
+                     question["content"], message["content"],
                      max(1, len(question["content"]) // 4), max(1, len(message["content"]) // 4),
                      len(question["content"]), len(message["content"]), user_id),
                 )
@@ -216,6 +242,46 @@ def init_db():
 
 def _normalize_real_name(value):
     return "".join((value or "").split())
+
+
+def _username_conflicts_with_verified_id(conn, username, exclude_user_id=None):
+    params = [str(username or "").strip()]
+    exclusion = ""
+    if exclude_user_id is not None:
+        exclusion = " AND id<>?"
+        params.append(int(exclude_user_id))
+    return conn.execute(
+        f"""SELECT 1 FROM users
+            WHERE is_active=1 AND COALESCE(identity_verified, 0)=1
+              AND institutional_id=?{exclusion}
+            LIMIT 1""",
+        params,
+    ).fetchone() is not None
+
+
+def _institutional_id_conflicts_with_account(conn, institutional_id, exclude_user_id=None):
+    params = [str(institutional_id or "").strip(), str(institutional_id or "").strip()]
+    exclusion = ""
+    if exclude_user_id is not None:
+        exclusion = " AND id<>?"
+        params.append(int(exclude_user_id))
+    return conn.execute(
+        f"""SELECT 1 FROM users
+            WHERE is_active=1
+              AND (username=? OR (COALESCE(identity_verified, 0)=1 AND institutional_id=?))
+              {exclusion}
+            LIMIT 1""",
+        params,
+    ).fetchone() is not None
+
+
+def _username_conflicts_with_roster_id(conn, username):
+    return conn.execute(
+        """SELECT 1 FROM identity_roster
+           WHERE is_active=1 AND institutional_id=?
+           LIMIT 1""",
+        (str(username or "").strip(),),
+    ).fetchone() is not None
 
 
 def upsert_identity_roster(entries):
@@ -238,11 +304,32 @@ def upsert_identity_roster(entries):
                 result["errors"].append(f"第 {index} 行编号或姓名过长")
                 continue
 
+            cross_type = conn.execute(
+                """SELECT identity_type FROM identity_roster
+                   WHERE institutional_id=? AND identity_type<>? AND is_active=1
+                   LIMIT 1""",
+                (institutional_id, identity_type),
+            ).fetchone()
+            if cross_type:
+                result["errors"].append(f"第 {index} 行编号已用于另一身份类型")
+                continue
+
             existing = conn.execute(
                 """SELECT id, real_name, bound_user_id FROM identity_roster
                    WHERE identity_type=? AND institutional_id=?""",
                 (identity_type, institutional_id),
             ).fetchone()
+            username_conflict = conn.execute(
+                """SELECT id FROM users
+                   WHERE is_active=1 AND username=?
+                   LIMIT 1""",
+                (institutional_id,),
+            ).fetchone()
+            if username_conflict and (
+                not existing or existing["bound_user_id"] != username_conflict["id"]
+            ):
+                result["errors"].append(f"第 {index} 行编号与现有用户名冲突")
+                continue
             if existing and existing["bound_user_id"]:
                 if _normalize_real_name(existing["real_name"]) != _normalize_real_name(real_name):
                     result["errors"].append(f"第 {index} 行编号已绑定，不能修改姓名")
@@ -289,12 +376,18 @@ def update_identity_roster_entry(roster_id, identity_type, institutional_id, rea
             raise LookupError("名册记录不存在")
         if row["bound_user_id"]:
             raise PermissionError("已绑定账号的名册记录不能修改")
+        username_conflict = conn.execute(
+            "SELECT id FROM users WHERE is_active=1 AND username=? LIMIT 1",
+            (institutional_id,),
+        ).fetchone()
+        if username_conflict:
+            raise ValueError("该学号或工号与现有用户名冲突")
         duplicate = conn.execute(
-            "SELECT id FROM identity_roster WHERE identity_type=? AND institutional_id=? AND id<>? AND is_active=1",
-            (identity_type, institutional_id, int(roster_id)),
+            "SELECT id FROM identity_roster WHERE institutional_id=? AND id<>? AND is_active=1",
+            (institutional_id, int(roster_id)),
         ).fetchone()
         if duplicate:
-            raise ValueError("该身份类型和编号已经存在")
+            raise ValueError("该学号或工号已经存在")
         conn.execute(
             "UPDATE identity_roster SET identity_type=?, institutional_id=?, real_name=?, is_active=1, updated_at=? WHERE id=?",
             (identity_type, institutional_id, real_name, datetime.now().isoformat(), int(roster_id)),
@@ -380,6 +473,13 @@ def create_user(username, password, display_name="", identity_type="", instituti
     salt, password_hash = _hash_password(password)
     conn = _get_conn()
     try:
+        if _username_conflicts_with_verified_id(conn, username):
+            raise ValueError("该用户名已作为学号或工号绑定其他账号")
+        if (
+            _username_conflicts_with_roster_id(conn, username)
+            and (not wants_identity_binding or username != institutional_id)
+        ):
+            raise ValueError("该用户名是名册中的学号或工号，请另设用户名后使用编号登录")
         if not wants_identity_binding:
             cur = conn.execute(
                 """INSERT INTO users
@@ -392,6 +492,8 @@ def create_user(username, password, display_name="", identity_type="", instituti
             user_id = cur.lastrowid
             return get_user_by_id(user_id)
 
+        if _institutional_id_conflicts_with_account(conn, institutional_id):
+            raise ValueError("该学号或工号与其他账号的登录标识冲突")
         roster = conn.execute(
             """SELECT id, real_name, bound_user_id FROM identity_roster
                WHERE identity_type=? AND institutional_id=? AND is_active=1""",
@@ -449,6 +551,12 @@ def ensure_admin_user(username, password, display_name="管理员", update_passw
             "SELECT id, role, display_name, is_active FROM users WHERE username=?",
             (username,),
         ).fetchone()
+        if _username_conflicts_with_verified_id(
+            conn, username, row["id"] if row else None
+        ):
+            raise ValueError("管理员用户名已作为学号或工号绑定其他账号")
+        if _username_conflicts_with_roster_id(conn, username):
+            raise ValueError("管理员用户名不能使用名册中的学号或工号")
         if row:
             if row["role"] != "admin":
                 raise ValueError("管理员用户名已被普通用户占用")
@@ -517,6 +625,9 @@ def bind_user_identity(user_id, identity_type, institutional_id, real_name):
         if user["identity_verified"]:
             raise ValueError("该账号已经完成身份核验")
 
+        if _institutional_id_conflicts_with_account(conn, institutional_id, user_id):
+            raise ValueError("该学号或工号与其他账号的登录标识冲突")
+
         roster = conn.execute(
             """SELECT id, real_name, bound_user_id FROM identity_roster
                WHERE identity_type=? AND institutional_id=? AND is_active=1""",
@@ -554,17 +665,110 @@ def bind_user_identity(user_id, identity_type, institutional_id, real_name):
     return get_user_by_id(user_id)
 
 
-def authenticate_user(username, password):
-    username = (username or "").strip()
+def provision_unbound_teacher_accounts(initial_password):
+    """Create and bind one account per active, unbound teacher roster row.
+
+    The operation is all-or-nothing.  Each account uses its institutional ID
+    as the canonical username and receives an independently salted password
+    hash, even though the supplied initial password is shared.
+    """
+    initial_password = initial_password or ""
+    if len(initial_password) < 8:
+        raise ValueError("教师初始密码至少需要 8 个字符")
+
     conn = _get_conn()
-    row = conn.execute(
-        "SELECT * FROM users WHERE username=? AND is_active=1",
-        (username,),
-    ).fetchone()
-    if not row:
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        roster_rows = conn.execute(
+            """SELECT id, institutional_id, real_name
+               FROM identity_roster
+               WHERE identity_type='teacher' AND is_active=1
+                 AND bound_user_id IS NULL
+               ORDER BY institutional_id"""
+        ).fetchall()
+
+        # Complete every conflict check before writing the first account so a
+        # stale username or alias cannot leave a partially provisioned class.
+        for roster in roster_rows:
+            institutional_id = str(roster["institutional_id"] or "").strip()
+            if not institutional_id:
+                raise ValueError("教师名册中存在空工号")
+            username_conflict = conn.execute(
+                "SELECT id FROM users WHERE username=? LIMIT 1",
+                (institutional_id,),
+            ).fetchone()
+            if username_conflict:
+                raise ValueError(f"工号 {institutional_id} 已被用作用户名")
+            if _institutional_id_conflicts_with_account(conn, institutional_id):
+                raise ValueError(f"工号 {institutional_id} 与现有登录标识冲突")
+
+        created = []
+        now = datetime.now().isoformat()
+        for roster in roster_rows:
+            institutional_id = str(roster["institutional_id"]).strip()
+            real_name = str(roster["real_name"] or "").strip()
+            salt, password_hash = _hash_password(initial_password)
+            cursor = conn.execute(
+                """INSERT INTO users
+                   (username, display_name, identity_type, institutional_id,
+                    real_name, identity_verified, salt, password_salt,
+                    password_hash, role, created_at, is_active)
+                   VALUES (?, ?, 'teacher', ?, ?, 1, ?, ?, ?, 'teacher', ?, 1)""",
+                (
+                    institutional_id,
+                    real_name or institutional_id,
+                    institutional_id,
+                    real_name,
+                    salt,
+                    salt,
+                    password_hash,
+                    now,
+                ),
+            )
+            user_id = int(cursor.lastrowid)
+            update = conn.execute(
+                """UPDATE identity_roster
+                   SET bound_user_id=?, bound_at=?, updated_at=?
+                   WHERE id=? AND bound_user_id IS NULL""",
+                (user_id, now, now, int(roster["id"])),
+            )
+            if update.rowcount != 1:
+                raise RuntimeError(f"工号 {institutional_id} 的名册绑定状态已变化")
+            created.append(
+                {
+                    "user_id": user_id,
+                    "username": institutional_id,
+                    "institutional_id": institutional_id,
+                    "real_name": real_name,
+                }
+            )
+        conn.commit()
+        return created
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def authenticate_user(username, password):
+    login_name = (username or "").strip()
+    conn = _get_conn()
+    rows = conn.execute(
+        """SELECT * FROM users
+           WHERE is_active=1
+             AND (
+                 username=?
+                 OR (COALESCE(identity_verified, 0)=1 AND institutional_id=?)
+             )
+           ORDER BY CASE WHEN username=? THEN 0 ELSE 1 END, id""",
+        (login_name, login_name, login_name),
+    ).fetchall()
+    if len(rows) != 1:
         conn.close()
         return None
-    salt, password_hash = _hash_password(password or "", row["password_salt"])
+    row = rows[0]
+    _, password_hash = _hash_password(password or "", row["password_salt"])
     if not py_secrets.compare_digest(password_hash, row["password_hash"]):
         conn.close()
         return None
@@ -581,7 +785,7 @@ def get_user_by_id(user_id):
     conn = _get_conn()
     row = conn.execute(
         """SELECT id, username, display_name, role, identity_type, institutional_id,
-                  real_name, identity_verified, created_at, last_login
+                  real_name, identity_verified, created_at, last_login, is_active
            FROM users WHERE id=?""",
         (user_id,),
     ).fetchone()
@@ -638,7 +842,11 @@ def end_session(session_id, total_q, total_err, ti, to):
 
 def log_interaction(session_id, question, answer, chapter, provider, model,
                     tokens_input, tokens_output, response_time_ms, error=None,
-                    rag_chunks=None, user_id=None, request_timing=None):
+                    rag_chunks=None, user_id=None, request_timing=None,
+                    agent_mode="assistant"):
+    agent_mode = str(agent_mode or "").strip()
+    if not agent_mode:
+        raise ValueError("agent_mode 不能为空。")
     timing_details = None
     if request_timing:
         timing_details = json.dumps(
@@ -648,11 +856,11 @@ def log_interaction(session_id, question, answer, chapter, provider, model,
     conn = _get_conn()
     cursor = conn.execute(
         """INSERT INTO interactions
-           (session_id, timestamp, question, answer, chapter, provider, model,
+           (session_id, agent_mode, timestamp, question, answer, chapter, provider, model,
             tokens_input, tokens_output, response_time_ms, error,
             rag_chunks_used, question_length, answer_length, user_id, timing_details)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (session_id, datetime.now().isoformat(), question, answer, chapter,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (session_id, agent_mode, datetime.now().isoformat(), question, answer, chapter,
          provider, model, tokens_input, tokens_output, response_time_ms, error,
          json.dumps(rag_chunks, ensure_ascii=False) if rag_chunks else None,
          len(question) if question else 0, len(answer) if answer else 0,

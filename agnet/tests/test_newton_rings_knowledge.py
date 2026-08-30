@@ -76,7 +76,7 @@ class NewtonRingsKnowledgeIntegrationTests(unittest.TestCase):
     def test_build_mapping_targets_wave_optics(self):
         self.assertEqual(
             build_kb.IMPORTED_COLLECTIONS.get("newton_rings"),
-            ("牛顿环等厚干涉实验", "第16章 波动光学"),
+            ("牛顿环等厚干涉实验", "第11章 波动光学"),
         )
 
     def test_portable_import_schema_and_course_physics(self):
@@ -202,7 +202,7 @@ class NewtonRingsKnowledgeIntegrationTests(unittest.TestCase):
     def test_merged_rows_keep_collection_metadata_and_priority(self):
         self.assertGreater(len(self.merged_newton_rows), 0)
         for row in self.merged_newton_rows:
-            self.assertEqual(row.get("chapter"), "第16章 波动光学")
+            self.assertEqual(row.get("chapter"), "第11章 波动光学")
             self.assertAlmostEqual(float(row.get("priority")), 0.9)
             self.assertTrue(
                 str(row.get("source_type", "")).startswith(
@@ -220,7 +220,7 @@ class NewtonRingsKnowledgeIntegrationTests(unittest.TestCase):
         knowledge_base = KnowledgeBase(MAIN_CHUNKS_PATH)
         results = knowledge_base.search(
             "牛顿环 钠黄光 589.3 暗环直径 15级逐差 曲率半径",
-            chapter="第16章 波动光学",
+            chapter="第11章 波动光学",
             top_k=10,
         )
         self.assertTrue(results)

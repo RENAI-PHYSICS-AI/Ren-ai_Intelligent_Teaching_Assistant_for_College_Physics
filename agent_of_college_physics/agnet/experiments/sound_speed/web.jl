@@ -450,6 +450,58 @@ function add_metrics!(grid, values, detail)
     Label(grid[2, 1:4], detail, color = MUTED, halign = :left)
 end
 
+function bind_playback!(grid, row, playback_slider, playback_range, reset_values; step = 1)
+    playing = Observable(false)
+    playback_values = collect(playback_range)
+    numeric_values = Float64.(playback_values)
+    playback_run = Ref(0)
+    button_grid = GridLayout()
+    grid[1:max(row - 1, 2), 4] = button_grid
+    play_button = Button(
+        button_grid[1, 1],
+        label = "播放",
+        height = 31,
+        buttoncolor = BUTTON_BG,
+        labelcolor = :white,
+    )
+    reset_button = Button(
+        button_grid[2, 1],
+        label = "重置",
+        height = 31,
+        buttoncolor = BUTTON_BG,
+        labelcolor = :white,
+    )
+    rowgap!(button_grid, 8)
+    colsize!(grid, 4, Fixed(116))
+
+    on(play_button.clicks) do _
+        playing[] = !playing[]
+        playback_run[] += 1
+        current_run = playback_run[]
+        play_button.label[] = playing[] ? "暂停" : "播放"
+        if playing[]
+            @async begin
+                while playing[] && playback_run[] == current_run
+                    current = Float64(playback_slider.value[])
+                    index = argmin(abs.(numeric_values .- current))
+                    next_index = mod1(index + step, length(playback_values))
+                    set_close_to!(playback_slider, playback_values[next_index])
+                    sleep(0.03)
+                end
+            end
+        end
+    end
+    on(reset_button.clicks) do _
+        playing[] = false
+        playback_run[] += 1
+        play_button.label[] = "播放"
+        for (slider, value) in reset_values
+            set_close_to!(slider, value)
+        end
+    end
+    return nothing
+end
+
 function echo_figure()
     figure, controls, metrics = lightweight_figure(
         "回声法测量声速",
@@ -475,6 +527,14 @@ function echo_figure()
         lift(x -> @sprintf("测量 Δt %.3f ms", 1000x.measured_delay), data),
         lift(x -> @sprintf("估计 v %.2f m/s", x.estimate), data),
         lift(x -> @sprintf("误差 %+.2f%%", 100(x.estimate - speed.value[]) / speed.value[]), data),
+    )
+    bind_playback!(
+        controls,
+        5,
+        distance,
+        0.2:0.1:8.0,
+        [(speed, 343), (distance, 3.0), (snr, 30), (reflection, 0.75)];
+        step = 2,
     )
     add_metrics!(metrics, values, Observable("距离增大可提高时间差分辨率；反射过弱或噪声过大会使峰值识别不稳定。"))
     return figure
@@ -504,6 +564,14 @@ function dual_figure()
         lift(x -> @sprintf("理论 Δt %.3f ms", 1000x.delay), data),
         lift(x -> @sprintf("相关峰 Δt %.3f ms", 1000x.measured_delay), data),
         lift(x -> @sprintf("估计 v %.2f m/s", x.estimate), data),
+    )
+    bind_playback!(
+        controls,
+        5,
+        angle,
+        0:1:70,
+        [(speed, 343), (distance, 3.0), (angle, 0), (snr, 30)];
+        step = 2,
     )
     add_metrics!(metrics, values, Observable("夹角通过 d cosθ 改变有效传播距离；较高采样率和信噪比有利于峰值定位。"))
     return figure
@@ -535,6 +603,14 @@ function phase_figure()
         lift(x -> isfinite(x.estimate) ? @sprintf("估计 v %.2f m/s", x.estimate) : "估计 v 未定义", data),
     )
     detail = lift(x -> x.cycle_count == x.true_cycles ? "周期数选择正确，可恢复完整传播相位。" : "周期数选择不正确，结果展示相位测量的整数周歧义。", data)
+    bind_playback!(
+        controls,
+        5,
+        distance,
+        0.2:0.1:8.0,
+        [(speed, 343), (distance, 3.0), (frequency, 500), (cycles, 4)];
+        step = 2,
+    )
     add_metrics!(metrics, values, detail)
     return figure
 end
@@ -566,6 +642,14 @@ function standing_figure()
         lift(x -> @sprintf("波节间距 %.4f m", x.node_spacing), data),
         lift(x -> @sprintf("4 个间隔 %.4f m", x.measured_span), data),
         lift(x -> @sprintf("估计 v %.2f m/s", x.estimate), data),
+    )
+    bind_playback!(
+        controls,
+        6,
+        progress,
+        0:1:100,
+        [(speed, 343), (distance, 3.0), (frequency, 500), (reflection, 0.75), (progress, 25)];
+        step = 2,
     )
     add_metrics!(metrics, values, Observable("测量多个连续波节间隔再取平均，可降低单个波节位置的读数误差。"))
     return figure

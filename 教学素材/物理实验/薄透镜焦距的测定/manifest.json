@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "topic": "薄透镜焦距的测定",
+  "category": "光学实验",
+  "measured_quantities": ["焦距", "像距", "横向放大率", "共轭位移", "合成不确定度"],
+  "methods": ["物距—像距直接法", "平面镜自准直法", "贝塞尔共轭位移法"],
+  "routes": ["direct", "autocollimation", "displacement", "uncertainty"],
+  "source_catalog": "sources.json",
+  "documents": ["薄透镜焦距可视化实验方案.md", "薄透镜焦距文献导读.md", "ref/README.md"],
+  "local_pdf_count": 5,
+  "core_reference_count": 10,
+  "knowledge_output": "agnet/knowledge_base/imports/thin_lens_focal.jsonl"
+}

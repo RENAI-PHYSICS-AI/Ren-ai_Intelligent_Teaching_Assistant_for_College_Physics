@@ -10,7 +10,7 @@ APP_DIR = Path(__file__).resolve().parents[1]
 if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 
-from storage import image_data_url
+from storage import image_data_url, pdf_attachment_data
 
 
 class ImageDataUrlTests(unittest.TestCase):
@@ -49,6 +49,27 @@ class ImageDataUrlTests(unittest.TestCase):
         self.assertEqual(image_data_url({"data": b"not-png", "mime": "image/png"}), "")
         oversized = b"\x89PNG\r\n\x1a\n" + b"x" * (20 * 1024**2)
         self.assertEqual(image_data_url({"data": oversized, "mime": "image/png"}), "")
+
+    def test_pdf_attachment_accepts_bytes_base64_and_data_url(self):
+        raw = b"%PDF-1.7\nmock\n%%EOF\n"
+        encoded = base64.b64encode(raw).decode("ascii")
+
+        self.assertEqual(pdf_attachment_data({"data": raw}), raw)
+        self.assertEqual(pdf_attachment_data({"data": encoded}), raw)
+        self.assertEqual(
+            pdf_attachment_data({"data": f"data:application/pdf;base64,{encoded}"}),
+            raw,
+        )
+
+    def test_pdf_attachment_rejects_false_mime_and_invalid_data(self):
+        self.assertEqual(
+            pdf_attachment_data({"data": b"not-pdf", "mime": "application/pdf"}),
+            b"",
+        )
+        self.assertEqual(
+            pdf_attachment_data({"data": "data:text/plain;base64,bm90LXBkZg=="}),
+            b"",
+        )
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ using WGLMakie
 
 const DOM = Bonito.DOM
 const Slider = WGLMakie.Makie.Slider
+const Button = WGLMakie.Makie.Button
 
 const TWO_PI = 2pi
 const MU0 = 4pi * 1.0e-7
@@ -32,6 +33,7 @@ const AMBER = RGBf(1.00, 0.72, 0.24)
 const GREEN = RGBf(0.36, 0.82, 0.55)
 const MUTED = RGBf(0.58, 0.62, 0.70)
 const PANEL_BG = RGBf(0.075, 0.085, 0.105)
+const BUTTON_BG = RGBf(0.13, 0.15, 0.19)
 const CJK_PROBE_TEXT = "电子荷质比可视化实验"
 const WGL_SHADER_FILES = (
     "mesh.frag",
@@ -210,6 +212,58 @@ function add_metrics!(grid, values, detail)
     rowsize!(grid, 1, 30)
     rowsize!(grid, 2, 48)
     rowgap!(grid, 8)
+    return nothing
+end
+
+function bind_playback!(grid, row, playback_slider, playback_range, reset_values; step = 1)
+    playing = Observable(false)
+    playback_values = collect(playback_range)
+    numeric_values = Float64.(playback_values)
+    generation = Ref(0)
+    button_grid = GridLayout()
+    grid[1:max(row - 1, 2), 4] = button_grid
+    play_button = Button(
+        button_grid[1, 1],
+        label = "播放",
+        height = 31,
+        buttoncolor = BUTTON_BG,
+        labelcolor = :white,
+    )
+    reset_button = Button(
+        button_grid[2, 1],
+        label = "重置",
+        height = 31,
+        buttoncolor = BUTTON_BG,
+        labelcolor = :white,
+    )
+    rowgap!(button_grid, 8)
+    colsize!(grid, 4, Fixed(116))
+
+    on(play_button.clicks) do _
+        playing[] = !playing[]
+        generation[] += 1
+        current_generation = generation[]
+        play_button.label[] = playing[] ? "暂停" : "播放"
+        if playing[]
+            @async begin
+                while playing[] && generation[] == current_generation
+                    current = Float64(playback_slider.value[])
+                    index = argmin(abs.(numeric_values .- current))
+                    next_index = mod1(index + step, length(playback_values))
+                    set_close_to!(playback_slider, playback_values[next_index])
+                    sleep(0.03)
+                end
+            end
+        end
+    end
+    on(reset_button.clicks) do _
+        playing[] = false
+        generation[] += 1
+        play_button.label[] = "播放"
+        for (slider, value) in reset_values
+            set_close_to!(slider, value)
+        end
+    end
     return nothing
 end
 
@@ -406,6 +460,20 @@ function circular_figure()
             "磁场反向会改变电子弯曲方向；理想磁场不做功，电子速率保持不变。"
         end
     end
+    bind_playback!(
+        controls,
+        6,
+        progress,
+        0:1:1000,
+        [
+            (voltage, 180),
+            (current, 1.50),
+            (residual, 30),
+            (radius_bias, 0.0),
+            (progress, 250),
+        ];
+        step = 8,
+    )
     add_metrics!(metrics, values, detail)
     return figure
 end
@@ -564,6 +632,21 @@ function helmholtz_figure()
             value.theoretical_slope,
         )
     end
+    bind_playback!(
+        controls,
+        7,
+        probe,
+        -2.0:0.02:2.0,
+        [
+            (current, 1.50),
+            (radius, 0.15),
+            (turns, 130),
+            (separation, 1.00),
+            (probe, 0.0),
+            (noise, 8),
+        ];
+        step = 2,
+    )
     add_metrics!(metrics, values, detail)
     return figure
 end
@@ -757,6 +840,20 @@ function focus_figure()
             "继续调节磁场寻找束斑极小值；若聚焦级次判错，η 将按 n² 产生显著偏差。"
         end
     end
+    bind_playback!(
+        controls,
+        6,
+        magnetic_field,
+        0.15:0.005:2.70,
+        [
+            (voltage, 180),
+            (magnetic_field, 0.815),
+            (flight_length, 0.35),
+            (divergence, 2.0),
+            (spread, 1.0),
+        ];
+        step = 3,
+    )
     add_metrics!(metrics, values, detail)
     return figure
 end
@@ -919,6 +1016,20 @@ function thomson_figure()
             )
         end
     end
+    bind_playback!(
+        controls,
+        6,
+        analyser_field,
+        0.20:0.01:2.50,
+        [
+            (voltage, 180),
+            (electric_field, 8.0),
+            (selector_field, 1.00),
+            (analyser_field, 1.00),
+            (radius_bias, 0.0),
+        ];
+        step = 2,
+    )
     add_metrics!(metrics, values, detail)
     return figure
 end

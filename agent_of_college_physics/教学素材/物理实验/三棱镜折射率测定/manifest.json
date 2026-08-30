@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "topic": "三棱镜折射率测定",
+  "category": "光学实验",
+  "method": "分光计反射法测顶角与最小偏向角法测折射率",
+  "measured_quantities": ["三棱镜顶角 A", "最小偏向角 δmin", "折射率 n(λ)", "Abbe 数 νd", "扩展不确定度 U(n)"],
+  "routes": ["collimation", "apex", "minimum-deviation", "dispersion"],
+  "source_catalog": "sources.json",
+  "documents": ["三棱镜折射率可视化实验方案.md", "三棱镜折射率文献导读.md", "ref/README.md"],
+  "local_pdf_count": 6,
+  "core_reference_count": 10,
+  "knowledge_output": "agnet/knowledge_base/imports/prism_refractive_index.jsonl"
+}

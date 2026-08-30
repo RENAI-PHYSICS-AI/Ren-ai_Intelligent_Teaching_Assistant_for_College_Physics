@@ -84,7 +84,7 @@ class YoungModulusKnowledgeIntegrationTests(unittest.TestCase):
     def test_build_mapping_uses_the_existing_mechanics_chapter(self):
         self.assertEqual(
             build_kb.IMPORTED_COLLECTIONS.get("young_modulus"),
-            ("杨氏模量测定实验", "第2章 牛顿运动定律"),
+            ("杨氏模量测定实验", "第2章 力、动量、能量"),
         )
 
     def test_portable_import_schema_ids_and_core_course_content(self):
@@ -277,7 +277,7 @@ class YoungModulusKnowledgeIntegrationTests(unittest.TestCase):
     def test_merged_rows_keep_authoritative_collection_metadata(self):
         self.assertGreater(len(self.merged_rows), 0)
         for row in self.merged_rows:
-            self.assertEqual(row.get("chapter"), "第2章 牛顿运动定律")
+            self.assertEqual(row.get("chapter"), "第2章 力、动量、能量")
             self.assertAlmostEqual(float(row.get("priority")), 0.9)
             self.assertTrue(
                 str(row.get("source_type", "")).startswith(
@@ -295,7 +295,7 @@ class YoungModulusKnowledgeIntegrationTests(unittest.TestCase):
         knowledge_base = KnowledgeBase(MAIN_CHUNKS_PATH)
         results = knowledge_base.search(
             "杨氏模量 金属丝 拉伸 光杠杆 加载 卸载 线性拟合 不确定度",
-            chapter="第2章 牛顿运动定律",
+            chapter="第2章 力、动量、能量",
             top_k=10,
         )
         self.assertTrue(results)

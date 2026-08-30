@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from fastapi import HTTPException
+from multidict import CIMultiDict
 from starlette.requests import Request
 
 
@@ -26,6 +27,8 @@ def request_for(
     prefix: str = "/agent",
     proto: str = "https",
     cookie: str = "",
+    method: str = "GET",
+    extra_headers: dict[str, str] | None = None,
 ) -> Request:
     headers = [
         (b"x-forwarded-prefix", prefix.encode("ascii")),
@@ -33,11 +36,13 @@ def request_for(
     ]
     if cookie:
         headers.append((b"cookie", cookie.encode("ascii")))
+    for key, value in (extra_headers or {}).items():
+        headers.append((key.lower().encode("ascii"), value.encode("ascii")))
     return Request(
         {
             "type": "http",
             "http_version": "1.1",
-            "method": "GET",
+            "method": method,
             "scheme": "http",
             "path": path,
             "raw_path": path.encode("ascii"),
@@ -180,6 +185,58 @@ class UserSessionTests(unittest.TestCase):
         self.assertIn("HttpOnly", set_cookie)
         self.assertIn("Path=/agent", set_cookie)
 
+    def test_admin_logout_expires_both_sessions_and_returns_to_login(self) -> None:
+        response = admin_api.admin_logout(
+            request_for("/admin-logout", method="POST"), mode="dark"
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers["location"], "/agent/?mode=dark")
+        self.assertEqual(response.headers["cache-control"], "no-store, max-age=0")
+        cookie_headers = response.headers.getlist("set-cookie")
+        deleted = set()
+        for header in cookie_headers:
+            parsed = SimpleCookie()
+            parsed.load(header)
+            self.assertEqual(len(parsed), 1)
+            name = next(iter(parsed))
+            morsel = parsed[name]
+            deleted.add((name, morsel["path"]))
+            self.assertEqual(morsel["max-age"], "0")
+            self.assertTrue(morsel["secure"])
+            self.assertTrue(morsel["httponly"])
+            self.assertEqual(morsel["samesite"].lower(), "strict")
+        self.assertEqual(
+            deleted,
+            {
+                (admin_api._ADMIN_SESSION_COOKIE, "/"),
+                (admin_api._ADMIN_SESSION_COOKIE, "/agent"),
+                (user_session.USER_SESSION_COOKIE, "/"),
+                (user_session.USER_SESSION_COOKIE, "/agent"),
+            },
+        )
+
+    def test_admin_logout_rejects_cross_site_form_posts(self) -> None:
+        with self.assertRaises(HTTPException) as blocked:
+            admin_api.admin_logout(
+                request_for(
+                    "/admin-logout",
+                    method="POST",
+                    extra_headers={"Sec-Fetch-Site": "cross-site"},
+                ),
+                mode="system",
+            )
+        self.assertEqual(blocked.exception.status_code, 403)
+
+    def test_admin_dashboard_contains_prefixed_logout_control(self) -> None:
+        page = admin_api._analytics_login_page(
+            auto_load=True, public_prefix="/agent"
+        )
+        self.assertIn('id="admin-logout"', page)
+        self.assertIn(">退出登录</button>", page)
+        self.assertIn('form.action = apiUrl("/admin-logout")', page)
+        self.assertIn('const API_PREFIX = "/agent";', page)
+
     def test_gateway_sends_session_endpoints_to_auth_service(self) -> None:
         from aiohttp.test_utils import make_mocked_request
 
@@ -188,6 +245,9 @@ class UserSessionTests(unittest.TestCase):
         )
         logout_request = make_mocked_request(
             "GET", "/agent/session-logout?ticket=xyz", headers={"Host": "example"}
+        )
+        admin_logout_request = make_mocked_request(
+            "POST", "/agent/admin-logout", headers={"Host": "example"}
         )
         with patch.object(gateway, "PUBLIC_PATH_PREFIX", "/agent"):
             self.assertEqual(
@@ -198,6 +258,30 @@ class UserSessionTests(unittest.TestCase):
                 gateway.upstream_url(logout_request),
                 f"{gateway.ADMIN_UPSTREAM}/session-logout?ticket=xyz",
             )
+            self.assertEqual(
+                gateway.upstream_url(admin_logout_request),
+                f"{gateway.ADMIN_UPSTREAM}/admin-logout",
+            )
+
+    def test_gateway_preserves_all_logout_set_cookie_headers(self) -> None:
+        upstream_headers = CIMultiDict(
+            [
+                ("Set-Cookie", "physics_admin_session=; Max-Age=0; Path=/"),
+                ("Set-Cookie", "physics_user_session=; Max-Age=0; Path=/agent"),
+                ("Connection", "close"),
+            ]
+        )
+
+        forwarded = gateway.forward_response_headers(upstream_headers)
+
+        self.assertEqual(
+            forwarded.getall("Set-Cookie"),
+            [
+                "physics_admin_session=; Max-Age=0; Path=/",
+                "physics_user_session=; Max-Age=0; Path=/agent",
+            ],
+        )
+        self.assertNotIn("Connection", forwarded)
 
     def test_login_redirect_uses_top_level_native_meta_refresh(self) -> None:
         app_source = (APP_DIR / "app.py").read_text(encoding="utf-8")

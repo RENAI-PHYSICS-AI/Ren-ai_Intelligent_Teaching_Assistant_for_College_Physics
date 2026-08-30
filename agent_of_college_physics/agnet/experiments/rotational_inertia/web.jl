@@ -13,6 +13,7 @@ using WGLMakie
 
 const DOM = Bonito.DOM
 const Slider = WGLMakie.Makie.Slider
+const Button = WGLMakie.Makie.Button
 
 const GRAVITY = 9.80665
 const FIGURE_WIDTH = 960
@@ -25,6 +26,7 @@ const GREEN = RGBf(0.36, 0.82, 0.55)
 const VIOLET = RGBf(0.61, 0.48, 0.92)
 const MUTED = RGBf(0.58, 0.62, 0.70)
 const PANEL_BG = RGBf(0.075, 0.085, 0.105)
+const BUTTON_BG = RGBf(0.13, 0.15, 0.19)
 const CJK_PROBE_TEXT = "转动惯量扭摆三线摆平行轴定理复摆周期拟合不确定度"
 const HEALTH_MARKER = "physics-experiment:rotational-inertia"
 const WGL_SHADER_FILES = (
@@ -169,6 +171,60 @@ function add_metrics!(grid, values, detail)
     return nothing
 end
 
+function bind_playback!(grid, row, playback_slider, playback_range, reset_values; step = 1)
+    playing = Observable(false)
+    playback_values = collect(playback_range)
+    isempty(playback_values) && throw(ArgumentError("播放序列不能为空"))
+    numeric_values = Float64.(playback_values)
+    generation = Ref(0)
+    button_grid = GridLayout()
+    grid[1:max(row - 1, 2), 4] = button_grid
+    play_button = Button(
+        button_grid[1, 1],
+        label = "播放",
+        height = 31,
+        buttoncolor = BUTTON_BG,
+        labelcolor = :white,
+    )
+    reset_button = Button(
+        button_grid[2, 1],
+        label = "重置",
+        height = 31,
+        buttoncolor = BUTTON_BG,
+        labelcolor = :white,
+    )
+    rowsize!(button_grid, 1, 31)
+    rowsize!(button_grid, 2, 31)
+    rowgap!(button_grid, 8)
+    colsize!(grid, 4, Fixed(116))
+    on(play_button.clicks) do _
+        playing[] = !playing[]
+        generation[] += 1
+        current_generation = generation[]
+        play_button.label[] = playing[] ? "暂停" : "播放"
+        if playing[]
+            @async begin
+                while playing[] && generation[] == current_generation
+                    current = Float64(playback_slider.value[])
+                    index = argmin(abs.(numeric_values .- current))
+                    next_index = mod1(index + step, length(playback_values))
+                    set_close_to!(playback_slider, playback_values[next_index])
+                    sleep(0.03)
+                end
+            end
+        end
+    end
+    on(reset_button.clicks) do _
+        playing[] = false
+        generation[] += 1
+        play_button.label[] = "播放"
+        for (slider, value) in reset_values
+            set_close_to!(slider, value)
+        end
+    end
+    return nothing
+end
+
 function linear_fit(x, y)
     length(x) == length(y) || throw(ArgumentError("拟合数据长度不一致"))
     length(x) >= 3 || throw(ArgumentError("线性拟合至少需要三个测量点"))
@@ -257,6 +313,13 @@ function torsion_figure()
     )
     detail = "扭摆满足 T=2π√((I₀+I)/κ)，故待测件转动惯量 I=κT²/(4π²)-I₀；阻尼仅改变振幅包络，弱阻尼下对周期的一阶影响可忽略。"
     add_metrics!(metrics, values, detail)
+    bind_playback!(
+        controls,
+        6,
+        radius,
+        3.0:0.5:9.0,
+        [(kappa, 8.0), (platform, 900), (mass, 0.50), (radius, 6.0), (damping, 0.03)],
+    )
     return figure
 end
 
@@ -343,6 +406,13 @@ function trifilar_figure()
     )
     detail = "三线摆小角近似下重力回复常量 κg=mgRr/H，T=2π√(I/κg)，因此 I=mgRrT²/(4π²H)；H 为上下悬点平面的竖直间距，并非 R≠r 时的悬线斜长。"
     add_metrics!(metrics, values, detail)
+    bind_playback!(
+        controls,
+        6,
+        timing,
+        -10:1:10,
+        [(mass, 2.0), (upper, 12.0), (lower, 10.0), (height, 60), (timing, 3)],
+    )
     return figure
 end
 
@@ -422,6 +492,13 @@ function parallel_axis_figure()
         @sprintf("平行轴定理 I_O=I_C+md²；对 I-d² 作自由截距拟合，斜率给出质量 m，截距给出质心轴惯量 I_C。当前斜率相对偏差 %+.3f%%。", value.mass_error_percent)
     end
     add_metrics!(metrics, values, detail)
+    bind_playback!(
+        controls,
+        6,
+        offset,
+        0.0:0.5:12.0,
+        [(mass, 0.50), (radius, 5.0), (offset, 6.0), (kappa, 8.0), (noise, 40)],
+    )
     return figure
 end
 
@@ -519,6 +596,13 @@ function pendulum_fit_figure()
         @sprintf("惯量单位 kg·m²。复摆线性化 T²h=(4π²/g)(h²+k²)；I_C的u由斜率—截距协方差传播，u[I(h)]仅由选定支点 T、h 传播。g偏差 %+.3f%%，I_C偏差 %+.3f%%。", value.gravity_error_percent, value.inertia_error_percent)
     end
     add_metrics!(metrics, values, detail)
+    bind_playback!(
+        controls,
+        6,
+        pivot,
+        8.0:1.0:32.0,
+        [(mass, 1.00), (radius, 12.0), (pivot, 20.0), (period_u, 5), (pivot_u, 0.5)],
+    )
     return figure
 end
 

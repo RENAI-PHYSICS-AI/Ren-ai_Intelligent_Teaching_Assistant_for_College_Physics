@@ -1,0 +1,37 @@
+[Unit]
+Description=DeepSeek V4 Flash AVX-512 OpenAI-compatible API
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/physics-assistant/deepseek-avx512.env
+ExecStartPre=/usr/bin/test -x ${DEEPSEEK_AVX512_SERVER_BIN}
+ExecStartPre=/usr/bin/test -r ${DEEPSEEK_AVX512_MODEL_PATH}
+ExecStart=/usr/bin/env numactl \
+  --physcpubind=${DEEPSEEK_AVX512_CPU_LIST} \
+  --membind=${DEEPSEEK_AVX512_NUMA_NODE} \
+  ${DEEPSEEK_AVX512_SERVER_BIN} \
+  --load-mode dio \
+  --model ${DEEPSEEK_AVX512_MODEL_PATH} \
+  --alias ${DEEPSEEK_AVX512_MODEL_ALIAS} \
+  --host ${DEEPSEEK_AVX512_HOST} \
+  --port ${DEEPSEEK_AVX512_PORT} \
+  --ctx-size ${DEEPSEEK_AVX512_CTX_SIZE} \
+  --parallel ${DEEPSEEK_AVX512_PARALLEL} \
+  --threads ${DEEPSEEK_AVX512_THREADS} \
+  --threads-batch ${DEEPSEEK_AVX512_THREADS_BATCH} \
+  --batch-size ${DEEPSEEK_AVX512_BATCH_SIZE} \
+  --ubatch-size ${DEEPSEEK_AVX512_UBATCH_SIZE} \
+  --kv-unified \
+  --jinja
+Restart=always
+RestartSec=15s
+TimeoutStopSec=300s
+KillSignal=SIGTERM
+UMask=0077
+NoNewPrivileges=true
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

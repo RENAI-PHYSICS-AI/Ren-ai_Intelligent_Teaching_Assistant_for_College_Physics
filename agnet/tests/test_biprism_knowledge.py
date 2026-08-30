@@ -80,7 +80,7 @@ class BiprismKnowledgeIntegrationTests(unittest.TestCase):
     def test_build_mapping_targets_wave_optics(self):
         self.assertEqual(
             build_kb.IMPORTED_COLLECTIONS.get("biprism"),
-            ("双棱镜干涉测波长实验", "第16章 波动光学"),
+            ("双棱镜干涉测波长实验", "第11章 波动光学"),
         )
 
     def test_portable_import_schema_ids_and_core_sodium_content(self):
@@ -205,7 +205,7 @@ class BiprismKnowledgeIntegrationTests(unittest.TestCase):
     def test_merged_rows_keep_collection_metadata_and_priority(self):
         self.assertGreater(len(self.merged_biprism_rows), 0)
         for row in self.merged_biprism_rows:
-            self.assertEqual(row.get("chapter"), "第16章 波动光学")
+            self.assertEqual(row.get("chapter"), "第11章 波动光学")
             self.assertAlmostEqual(float(row.get("priority")), 0.9)
             self.assertTrue(
                 str(row.get("source_type", "")).startswith(
@@ -223,7 +223,7 @@ class BiprismKnowledgeIntegrationTests(unittest.TestCase):
         knowledge_base = KnowledgeBase(MAIN_CHUNKS_PATH)
         results = knowledge_base.search(
             "双棱镜 钠黄光 二次成像 虚光源间距 条纹间距 波长",
-            chapter="第16章 波动光学",
+            chapter="第11章 波动光学",
             top_k=10,
         )
         self.assertTrue(results)

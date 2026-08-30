@@ -2,6 +2,8 @@
 tmp/
 .tmp/
 .codex-tmp/
+# 本地一次性部署归档
+rocky-*.tar.gz
 # Python缓存
 __pycache__/
 *.pyc
@@ -28,6 +30,14 @@ agent_of_college_physics/.runtime/
 !教学素材/物理实验/**/ref/README.md
 agent_of_college_physics/教学素材/物理实验/**/ref/*
 !agent_of_college_physics/教学素材/物理实验/**/ref/README.md
+# 教师专用命题资料及其私有索引不进入源码仓库；仅保留空目录占位文件
+/考试素材/
+教学素材/教师专用/教研考试/*
+!教学素材/教师专用/教研考试/.gitkeep
+agent_of_college_physics/教学素材/教师专用/教研考试/*
+!agent_of_college_physics/教学素材/教师专用/教研考试/.gitkeep
+agnet/knowledge_base/private/
+agent_of_college_physics/agnet/knowledge_base/private/
 # LaTeX 中间文件
 *.aux
 *.bbl

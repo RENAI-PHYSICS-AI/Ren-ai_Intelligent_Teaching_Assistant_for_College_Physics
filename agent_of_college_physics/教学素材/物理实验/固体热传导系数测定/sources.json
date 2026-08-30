@@ -1,0 +1,112 @@
+[
+  {
+    "id": "TC01_FOURIER_1878",
+    "authors": ["Joseph Fourier", "Alexander Freeman (translator)"],
+    "year": 1878,
+    "title": "The Analytical Theory of Heat",
+    "publisher": "Cambridge University Press",
+    "type": "经典专著",
+    "topic": "傅里叶热传导定律、温度梯度与热流",
+    "url": "https://archive.org/details/analyticaltheory00fourrich",
+    "local_file": "ref/Fourier_1878_Analytical_Theory_of_Heat.pdf"
+  },
+  {
+    "id": "TC02_ANGSTROM_1863",
+    "authors": ["Anders Jonas Angström"],
+    "year": 1863,
+    "title": "New Method of Determining the Thermal Conductibility of Bodies",
+    "publisher": "Taylor & Francis / Philosophical Magazine",
+    "type": "原始论文",
+    "topic": "周期加热法、温度波传播与热扩散率",
+    "url": "https://doi.org/10.1080/14786446308643451",
+    "local_file": ""
+  },
+  {
+    "id": "TC03_LEES_1898",
+    "authors": ["Charles H. Lees"],
+    "year": 1898,
+    "title": "On the Thermal Conductivities of Single and Mixed Solids and Liquids, and Their Variation with Temperature",
+    "publisher": "Royal Society",
+    "type": "原始论文",
+    "topic": "Lees 圆盘法、稳态传热与冷却损失修正",
+    "url": "https://doi.org/10.1098/rsta.1898.0008",
+    "local_file": ""
+  },
+  {
+    "id": "TC04_CARSLAW_JAEGER_1959",
+    "authors": ["Horatio S. Carslaw", "John C. Jaeger"],
+    "year": 1959,
+    "title": "Conduction of Heat in Solids, Second Edition",
+    "publisher": "Oxford University Press",
+    "type": "经典专著",
+    "topic": "一维与多维导热方程、边界条件和瞬态解",
+    "url": "https://global.oup.com/academic/product/conduction-of-heat-in-solids-9780198533689",
+    "local_file": ""
+  },
+  {
+    "id": "TC05_ASTM_C177",
+    "authors": ["ASTM International Committee C16"],
+    "year": 2025,
+    "title": "ASTM C177: Standard Test Method for Steady-State Heat Flux Measurements and Thermal Transmission Properties by Means of the Guarded-Hot-Plate Apparatus",
+    "publisher": "ASTM International",
+    "type": "权威标准",
+    "topic": "防护热板法、稳态判据、热流计量和边缘热损失控制",
+    "url": "https://www.astm.org/c0177.html",
+    "local_file": ""
+  },
+  {
+    "id": "TC06_ISO_8302",
+    "authors": ["International Organization for Standardization"],
+    "year": 1991,
+    "title": "ISO 8302: Thermal Insulation — Determination of Steady-State Thermal Resistance and Related Properties — Guarded Hot Plate Apparatus",
+    "publisher": "ISO",
+    "type": "权威标准",
+    "topic": "防护热板装置、试样条件、稳态热阻与热传导系数",
+    "url": "https://www.iso.org/standard/15422.html",
+    "local_file": ""
+  },
+  {
+    "id": "TC07_NBS_IR_88_3089",
+    "authors": ["Jerome G. Hust", "B. James Filla", "James A. Hurley", "David R. Smith"],
+    "year": 1988,
+    "title": "An Automated High-Temperature Guarded-Hot-Plate Apparatus for Measuring Apparent Thermal Conductivity",
+    "publisher": "National Bureau of Standards",
+    "type": "官方技术报告",
+    "topic": "防护热板装置、温差控制、热流测量与自动化",
+    "url": "https://doi.org/10.6028/NBS.IR.88-3089",
+    "local_file": "ref/NBS_IR_88_3089_Guarded_Hot_Plate.pdf"
+  },
+  {
+    "id": "TC08_NIST_JRES_123_001",
+    "authors": ["Robert R. Zarr", "William C. Thomas"],
+    "year": 2018,
+    "title": "Transient Thermal Response of a Guarded-Hot-Plate Apparatus for Operation Over an Extended Temperature Range",
+    "publisher": "National Institute of Standards and Technology",
+    "type": "官方同行评议论文",
+    "topic": "稳态建立、瞬态响应、时间常数与测量等待时间",
+    "url": "https://doi.org/10.6028/jres.123.001",
+    "local_file": "ref/NIST_JRES_123_001_Transient_GHP.pdf"
+  },
+  {
+    "id": "TC09_NIST_TN_1606",
+    "authors": ["Robert R. Zarr"],
+    "year": 2009,
+    "title": "Assessment of Uncertainties for the NIST 1016 mm Guarded-Hot-Plate Apparatus: Extended Analysis for Low-Density Fibrous-Glass Thermal Insulation",
+    "publisher": "National Institute of Standards and Technology",
+    "type": "官方技术报告",
+    "topic": "热传导系数测量模型、灵敏系数与不确定度预算",
+    "url": "https://doi.org/10.6028/NIST.TN.1606",
+    "local_file": "ref/NIST_TN_1606_GHP_Uncertainty.pdf"
+  },
+  {
+    "id": "TC10_JCGM_100_2008",
+    "authors": ["Joint Committee for Guides in Metrology"],
+    "year": 2008,
+    "title": "Evaluation of Measurement Data — Guide to the Expression of Uncertainty in Measurement",
+    "publisher": "JCGM / BIPM",
+    "type": "国际计量指南",
+    "topic": "A 类和 B 类评定、灵敏系数、合成与扩展不确定度",
+    "url": "https://doi.org/10.59161/JCGM100-2008E",
+    "local_file": "ref/JCGM_100_2008_GUM.pdf"
+  }
+]

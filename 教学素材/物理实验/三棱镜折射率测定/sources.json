@@ -1,0 +1,112 @@
+[
+  {
+    "id": "newton-opticks-1704",
+    "authors": ["Isaac Newton"],
+    "year": 1704,
+    "title": "Opticks: or, A Treatise of the Reflexions, Refractions, Inflexions and Colours of Light",
+    "publisher": "Samuel Smith and Benjamin Walford / Cambridge Digital Library",
+    "type": "classic_monograph",
+    "topic": "棱镜色散、太阳光谱与折射实验的经典原始文献",
+    "url": "https://cudl.lib.cam.ac.uk/view/PR-ADV-B-00039-00026/1",
+    "local_file": null
+  },
+  {
+    "id": "cauchy-dispersion-1836",
+    "authors": ["Augustin-Louis Cauchy"],
+    "year": 1836,
+    "title": "Mémoire sur la dispersion de la lumière",
+    "publisher": "Nouveaux exercices de mathématiques / Bibliothèque nationale de France",
+    "type": "classic_original_paper",
+    "topic": "可见区正常色散与 Cauchy 经验公式的历史来源",
+    "url": "https://catalogue.bnf.fr/ark:/12148/cb30208200v",
+    "local_file": null
+  },
+  {
+    "id": "iso-21395-1-2020",
+    "authors": ["International Organization for Standardization"],
+    "year": 2020,
+    "title": "Optics and photonics — Test method for refractive index of optical glasses — Part 1: Minimum deviation method",
+    "publisher": "ISO",
+    "type": "international_standard",
+    "topic": "光学玻璃最小偏向角折射率测量的标准化方法",
+    "url": "https://www.iso.org/standard/70857.html",
+    "local_file": null
+  },
+  {
+    "id": "jenkins-white-1976",
+    "authors": ["Francis A. Jenkins", "Harvey E. White"],
+    "year": 1976,
+    "title": "Fundamentals of Optics, Fourth Edition",
+    "publisher": "McGraw-Hill",
+    "type": "classic_textbook",
+    "topic": "分光计、棱镜光路、最小偏向条件和色散理论",
+    "url": "https://search.worldcat.org/title/1996393",
+    "local_file": null
+  },
+  {
+    "id": "schott-tie-29-2023",
+    "authors": ["SCHOTT Advanced Optics"],
+    "year": 2023,
+    "title": "TIE-29: Refractive Index and Dispersion",
+    "publisher": "SCHOTT",
+    "type": "manufacturer_technical_information",
+    "topic": "折射率、谱线、Sellmeier 色散、Abbe 数和最小偏向法",
+    "url": "https://media.schott.com/api/public/content/aaa572afd854434fb7b3faa4bc46103f?download=true&v=06988a0a",
+    "local_file": "ref/SCHOTT_TIE29_Refractive_Index_Dispersion.pdf"
+  },
+  {
+    "id": "schott-pocket-catalog-2025",
+    "authors": ["SCHOTT Advanced Optics"],
+    "year": 2025,
+    "title": "Optical Glass Pocket Catalog",
+    "publisher": "SCHOTT",
+    "type": "official_material_catalog",
+    "topic": "光学玻璃标准谱线折射率、色散系数与 Sellmeier 常数",
+    "url": "https://media.schott.com/api/public/content/b37dbd8fa7e64662b2d0ae523ae56238?download=true&v=97f67105",
+    "local_file": "ref/SCHOTT_Optical_Glass_Pocket_Catalog.pdf"
+  },
+  {
+    "id": "uci-faraday-prism",
+    "authors": ["University of California, Irvine Department of Physics and Astronomy"],
+    "year": 2026,
+    "title": "Faraday Rotation: Prism Angle and Refractive Index Measurements",
+    "publisher": "University of California, Irvine",
+    "type": "university_advanced_lab_manual",
+    "topic": "分光计调节、反射法测顶角和双向最小偏向法",
+    "url": "https://www.physics.uci.edu/~advanlab/faraday.pdf",
+    "local_file": "ref/UCI_Faraday_Prism_Refractometry.pdf"
+  },
+  {
+    "id": "csm-prism-spectrometer",
+    "authors": ["College of San Mateo Physics Department"],
+    "year": 2008,
+    "title": "Physics 270 Lab 6: Prism Spectrometer",
+    "publisher": "College of San Mateo",
+    "type": "university_lab_manual",
+    "topic": "游标读数、顶角、谱线逐线最小偏向和 Cauchy 拟合",
+    "url": "https://collegeofsanmateo.edu/physics/docs/physics270/lab06.pdf",
+    "local_file": "ref/CSM_Prism_Spectrometer_Lab06.pdf"
+  },
+  {
+    "id": "rochester-student-spectrometer",
+    "authors": ["University of Rochester Department of Physics and Astronomy"],
+    "year": 2021,
+    "title": "Experiment 14: Student Spectrometer",
+    "publisher": "University of Rochester",
+    "type": "university_lab_manual",
+    "topic": "分光计合焦、消视差、最小偏向角判据与实验操作",
+    "url": "https://www.pas.rochester.edu/~physlabs/manuals/Experiment14.pdf",
+    "local_file": "ref/Rochester_Student_Spectrometer_Experiment14.pdf"
+  },
+  {
+    "id": "jcgm-100-2008",
+    "authors": ["Joint Committee for Guides in Metrology"],
+    "year": 2008,
+    "title": "Evaluation of Measurement Data — Guide to the Expression of Uncertainty in Measurement",
+    "publisher": "JCGM/BIPM",
+    "type": "metrology_guide",
+    "topic": "顶角和最小偏向角输入量的不确定度传播与结果报告",
+    "url": "https://doi.org/10.59161/JCGM100-2008E",
+    "local_file": "ref/JCGM_100_2008_GUM.pdf"
+  }
+]

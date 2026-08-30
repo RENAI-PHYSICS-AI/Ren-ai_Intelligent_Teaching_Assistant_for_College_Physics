@@ -14,7 +14,9 @@ from config import setting
 _CACHE: dict[tuple[str, int], tuple[float, list[dict]]] = {}
 _CACHE_LOCK = threading.Lock()
 _SEARCH_MARKERS = re.compile(
-    r"联网|上网|网页|网络搜索|搜索一下|查一下|查阅网络|最新|近期|目前|当前|现状|"
+    r"联网|上网|网页|网上(?:信息|资料|内容|来源|参考)?|网络搜索|"
+    r"网络(?:上|中|的)?(?:信息|资料|内容|来源|参考)|搜索一下|查一下|查阅网络|"
+    r"最新|近期|目前|当前|现状|"
     r"进展|新闻|实时|今天|本月|今年|现行(?:标准|规范|政策)|20\d{2}年",
     re.IGNORECASE,
 )

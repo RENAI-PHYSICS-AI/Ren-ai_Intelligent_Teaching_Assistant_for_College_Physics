@@ -13,6 +13,7 @@ using WGLMakie
 
 const DOM = Bonito.DOM
 const Slider = WGLMakie.Makie.Slider
+const Button = WGLMakie.Makie.Button
 
 const GRAVITY = 9.80665
 const DEFAULT_YOUNG_MODULUS_PA = 2.00e11
@@ -32,6 +33,7 @@ const GREEN = RGBf(0.36, 0.82, 0.55)
 const VIOLET = RGBf(0.61, 0.48, 0.92)
 const MUTED = RGBf(0.58, 0.62, 0.70)
 const PANEL_BG = RGBf(0.075, 0.085, 0.105)
+const BUTTON_BG = RGBf(0.13, 0.15, 0.19)
 const CJK_PROBE_TEXT = "杨氏模量静态拉伸光杠杆加卸载拟合不确定度"
 const HEALTH_MARKER = "physics-experiment:young-modulus"
 const WGL_SHADER_FILES = (
@@ -227,6 +229,60 @@ function add_metrics!(grid, values, detail)
     return nothing
 end
 
+function bind_playback!(grid, row, playback_slider, playback_range, reset_values; step = 1)
+    playing = Observable(false)
+    playback_values = collect(playback_range)
+    isempty(playback_values) && throw(ArgumentError("播放序列不能为空"))
+    numeric_values = Float64.(playback_values)
+    generation = Ref(0)
+    button_grid = GridLayout()
+    grid[1:max(row - 1, 2), 4] = button_grid
+    play_button = Button(
+        button_grid[1, 1],
+        label = "播放",
+        height = 31,
+        buttoncolor = BUTTON_BG,
+        labelcolor = :white,
+    )
+    reset_button = Button(
+        button_grid[2, 1],
+        label = "重置",
+        height = 31,
+        buttoncolor = BUTTON_BG,
+        labelcolor = :white,
+    )
+    rowsize!(button_grid, 1, 31)
+    rowsize!(button_grid, 2, 31)
+    rowgap!(button_grid, 8)
+    colsize!(grid, 4, Fixed(116))
+    on(play_button.clicks) do _
+        playing[] = !playing[]
+        generation[] += 1
+        current_generation = generation[]
+        play_button.label[] = playing[] ? "暂停" : "播放"
+        if playing[]
+            @async begin
+                while playing[] && generation[] == current_generation
+                    current = Float64(playback_slider.value[])
+                    index = argmin(abs.(numeric_values .- current))
+                    next_index = mod1(index + step, length(playback_values))
+                    set_close_to!(playback_slider, playback_values[next_index])
+                    sleep(0.03)
+                end
+            end
+        end
+    end
+    on(reset_button.clicks) do _
+        playing[] = false
+        generation[] += 1
+        play_button.label[] = "播放"
+        for (slider, value) in reset_values
+            set_close_to!(slider, value)
+        end
+    end
+    return nothing
+end
+
 function linear_fit(x, y)
     length(x) == length(y) || throw(ArgumentError("拟合数据长度不一致"))
     length(x) >= 3 || throw(ArgumentError("线性拟合至少需要三个测量点"))
@@ -394,6 +450,13 @@ function principle_figure()
         )
     end
     add_metrics!(metrics, values, detail)
+    bind_playback!(
+        controls,
+        5,
+        delta_length,
+        0:5:250,
+        [(delta_length, 100), (lever_arm, 80), (scale_distance, 1.5), (display_range, 250)],
+    )
     return figure
 end
 
@@ -515,6 +578,13 @@ function loading_figure()
         )
     end
     add_metrics!(metrics, values, detail)
+    bind_playback!(
+        controls,
+        5,
+        selected_mass,
+        LOAD_MASSES_KG,
+        [(modulus, 200), (reading_noise, 0.10), (hysteresis, 0.08), (selected_mass, 3.0)],
+    )
     return figure
 end
 
@@ -594,6 +664,13 @@ function fit_figure()
         )
     end
     add_metrics!(metrics, values, detail)
+    bind_playback!(
+        controls,
+        5,
+        modulus,
+        160:5:240,
+        [(modulus, 200), (wire_length, 0.80), (wire_diameter, 0.50), (reading_noise, 0.10)],
+    )
     return figure
 end
 
@@ -709,6 +786,13 @@ function uncertainty_figure()
     )
     detail = "E=8MgLD/(πd²bΔs)；按独立输入量作平方和合成，直径项因 d² 产生系数 2。图示为标准不确定度（k=1），不替代原始重复测量的 A 类评定。"
     add_metrics!(metrics, values, detail)
+    bind_playback!(
+        controls,
+        6,
+        scale_u,
+        0.02:0.01:0.20,
+        [(scale_u, 0.10), (diameter_u, 0.005), (length_u, 1.0), (lever_u, 0.10), (distance_u, 1.0)],
+    )
     return figure
 end
 

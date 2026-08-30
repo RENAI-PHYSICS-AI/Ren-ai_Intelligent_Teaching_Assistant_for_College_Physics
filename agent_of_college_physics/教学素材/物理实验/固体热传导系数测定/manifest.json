@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "topic": "固体热传导系数测定",
+  "category": "热学实验",
+  "measured_quantities": ["热传导系数", "稳态温差", "温度梯度", "热损失修正", "合成不确定度"],
+  "methods": ["稳态圆盘法", "良导体棒法", "冷却曲线修正", "线性拟合"],
+  "routes": ["steady-state", "cooling", "fit", "uncertainty"],
+  "source_catalog": "sources.json",
+  "documents": ["固体热传导系数可视化实验方案.md", "固体热传导系数文献导读.md", "ref/README.md"],
+  "local_pdf_count": 5,
+  "core_reference_count": 10,
+  "knowledge_output": "agnet/knowledge_base/imports/thermal_conductivity.jsonl"
+}
