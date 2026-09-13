@@ -19,6 +19,7 @@ from build_kb import (
     legacy_office,
     office_openxml,
     pdf_pages,
+    relative_source_path,
     split_chunks,
     useful,
 )
@@ -79,12 +80,13 @@ def source_roots() -> tuple[Path, ...]:
 
 
 def _relative(path: Path, root: Path, *, archive_prefix: str = "") -> str:
+    relative = relative_source_path(path, root).as_posix()
     if root.resolve() == EXAM_MATERIALS_DIR.resolve():
-        base = f"考试素材/{path.relative_to(root).as_posix()}"
+        base = f"考试素材/{relative}"
     elif _inside(root, MATERIALS_DIR):
-        base = path.relative_to(MATERIALS_DIR).as_posix()
+        base = relative_source_path(path, MATERIALS_DIR).as_posix()
     else:
-        base = f"教师专用/{root.name}/{path.relative_to(root).as_posix()}"
+        base = f"教师专用/{root.resolve().name}/{relative}"
     return f"{archive_prefix}!/{base}" if archive_prefix else base
 
 
@@ -351,7 +353,7 @@ def _skip(path: Path, root: Path) -> str:
         return "空文件"
     if path.suffix.lower() in _ARTIFACT_SUFFIXES:
         return "编译产物"
-    relative_parts = {part.lower() for part in path.relative_to(root).parts[:-1]}
+    relative_parts = {part.lower() for part in relative_source_path(path, root).parts[:-1]}
     if path.suffix.lower() == ".pdf" and relative_parts & _FIGURE_DIRS:
         return "试题附图PDF"
     if path.suffix.lower() not in PRIVATE_SUPPORTED:
@@ -408,6 +410,10 @@ def build() -> dict:
         for path in root.rglob("*"):
             if not path.is_file():
                 continue
+            if not _inside(path, root):
+                skipped.append({"file": path.relative_to(root).as_posix(),
+                                "reason": "源文件位于允许的资料目录之外，已跳过"})
+                continue
             reason = _skip(path, root)
             if reason:
                 if path.suffix.lower() in PRIVATE_SUPPORTED or path.stat().st_size == 0:
@@ -432,7 +438,7 @@ def build() -> dict:
                         reason = _skip(member, Path(temporary))
                         if reason:
                             continue
-                        virtual = f"{relative}!/{member.relative_to(temporary).as_posix()}"
+                        virtual = f"{relative}!/{relative_source_path(member, Path(temporary)).as_posix()}"
                         process(member, Path(temporary), relative_override=virtual)
                 stats["zip_files"] += 1
             except Exception as exc:

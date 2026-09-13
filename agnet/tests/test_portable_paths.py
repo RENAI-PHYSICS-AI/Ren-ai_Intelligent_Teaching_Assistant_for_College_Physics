@@ -16,6 +16,40 @@ import check_portable_paths as portable
 WINDOWS_PATH = "C:" + "\\build\\physics"
 
 
+@pytest.mark.parametrize("ancestor", sorted(portable.SKIP_PARTS))
+def test_checkout_ancestors_do_not_suppress_source_audit(
+    tmp_path: Path, monkeypatch, ancestor: str
+) -> None:
+    checkout = tmp_path / ancestor / "project"
+    checkout.mkdir(parents=True)
+    source = checkout / "application.py"
+    source.write_text(f"path={WINDOWS_PATH}\n", encoding="utf-8")
+    monkeypatch.setattr(portable, "ROOT", checkout)
+
+    errors: list[str] = []
+    portable.audit_source_text(errors)
+
+    assert errors == [f"硬编码盘符：{source.name}:1"]
+
+
+@pytest.mark.parametrize("excluded", sorted(portable.SKIP_PARTS))
+def test_project_subdirectories_remain_excluded(
+    tmp_path: Path, monkeypatch, excluded: str
+) -> None:
+    monkeypatch.setattr(portable, "ROOT", tmp_path)
+    excluded_dir = tmp_path / "package" / excluded
+    excluded_dir.mkdir(parents=True)
+    source = excluded_dir / "application.py"
+    source.write_text(f"path={WINDOWS_PATH}\n", encoding="utf-8")
+    included = tmp_path / "application.py"
+    included.write_text("value=1\n", encoding="utf-8")
+
+    assert list(portable.project_text_files()) == [included]
+    errors: list[str] = []
+    portable.audit_source_text(errors)
+    assert errors == []
+
+
 @pytest.mark.parametrize(
     "suffix",
     [".yml", ".yaml", ".js", ".html", ".css", ".env", ".jsonl", ".svg", ".tex", ".txt"],

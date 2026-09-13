@@ -342,14 +342,29 @@ class PhotoelectricExperimentIntegrationTests(unittest.TestCase):
             "PHYSICS_BIPRISM_UPSTREAM=http://127.0.0.1:9388",
             env_source,
         )
-        self.assertTrue(
-            (
-                ROCKY_ROOT
-                / "agnet"
-                / "runtime"
-                / "experiments"
-                / "photoelectric.log"
-            ).exists()
+        # Runtime logs are ignored deployment output, not source fixtures.
+        # Check the precompile, stop and health-check contracts themselves.
+        self.assertIn("Pkg.instantiate(); Pkg.precompile()", install_source)
+        self.assertIn(
+            '"$APP_ROOT/agnet/experiments/$experiment/web.jl" --no-instantiate --self-test',
+            install_source,
+        )
+        process_discovery = manage_source.split("experiment_pids() {", 1)[1].split(
+            "\n}\n", 1
+        )[0]
+        self.assertIn("experiments/photoelectric/web.jl", process_discovery)
+        stop_source = manage_source.split("stop_experiments() {", 1)[1].split(
+            "\n}\n", 1
+        )[0]
+        self.assertIn("mapfile -t pids < <(experiment_pids)", stop_source)
+        self.assertIn('kill -TERM "${pids[@]}"', stop_source)
+        self.assertIn(
+            'http://127.0.0.1:$PHYSICS_PHOTOELECTRIC_PORT/__physics_health__',
+            manage_source,
+        )
+        self.assertIn(
+            "http://127.0.0.1:8501/experiments/photoelectric/__physics_health__",
+            manage_source,
         )
 
 

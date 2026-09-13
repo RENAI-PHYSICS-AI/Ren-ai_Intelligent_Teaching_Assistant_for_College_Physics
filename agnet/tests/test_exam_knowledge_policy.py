@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import runpy
 import sys
 import tempfile
 import unittest
@@ -15,7 +16,6 @@ if str(APP_DIR) not in sys.path:
 
 import build_kb
 import build_teacher_exam_kb
-import config
 import teacher_exam
 
 
@@ -55,8 +55,38 @@ class ExamKnowledgePolicyTests(unittest.TestCase):
                 self.assertEqual(build_kb.classify(text), expected)
 
     def test_standard_template_and_policy_are_mandatory_teacher_context(self) -> None:
-        self.assertTrue(config.TEACHER_EXAM_TEMPLATE_FILE.is_file())
-        self.assertTrue(config.TEACHER_EXAM_GUIDE_FILE.is_file())
+        # Deployment supplies these private files; a clean checkout must test
+        # their configured resolution without requiring real exam materials.
+        with tempfile.TemporaryDirectory() as temporary:
+            exam_root = Path(temporary) / "restricted-exams"
+            fixtures = {
+                "TEACHER_EXAM_TEMPLATE_FILE": (
+                    teacher_exam.DEFAULT_EXAM_TEMPLATE_RELATIVE_PATH,
+                    r"\documentclass{article}\begin{document}Synthetic exam\end{document}",
+                ),
+                "TEACHER_EXAM_GUIDE_FILE": (
+                    teacher_exam.MANDATORY_EXAM_GUIDE_RELATIVE_PATH,
+                    "合成命题规范：选择题30分、填空题20分、计算题50分。",
+                ),
+            }
+            expected_paths = {}
+            for key, (relative, content) in fixtures.items():
+                path = exam_root / Path(relative).relative_to("考试素材")
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content, encoding="utf-8")
+                expected_paths[key] = path
+            with patch.dict(
+                "os.environ", {"PHYSICS_EXAM_MATERIALS_DIR": str(exam_root)}
+            ):
+                configured = runpy.run_path(str(APP_DIR / "config.py"))
+            self.assertEqual(configured["EXAM_MATERIALS_DIR"], exam_root)
+            self.assertIn(exam_root, configured["TEACHER_EXAM_SOURCE_DIRS"])
+            for key, path in expected_paths.items():
+                with self.subTest(setting=key):
+                    self.assertEqual(configured[key], path)
+                    self.assertEqual(
+                        configured[key].read_text(encoding="utf-8"), fixtures[key][1]
+                    )
         self.assertIn("25262大物1补考/main.tex", teacher_exam.DEFAULT_EXAM_TEMPLATE_RELATIVE_PATH)
         self.assertIn(
             "25262大物1补考/answer.tex",
@@ -82,6 +112,11 @@ class ExamKnowledgePolicyTests(unittest.TestCase):
             template = exam / "试卷" / "2025-2026-2" / "25262大物1补考" / "main.tex"
             template.parent.mkdir(parents=True)
             template.write_text("\\documentclass{article} 标准试卷模板：单选、填空、计算题，总分一百分。", encoding="utf-8")
+            answer = template.with_name("answer.tex")
+            answer.write_text(
+                "\\documentclass{article} 标准答案模板：客观题答案横表，计算题分步给分，逐题核对量纲。",
+                encoding="utf-8",
+            )
             archive = exam / "题库.zip"
             with zipfile.ZipFile(archive, "w") as handle:
                 handle.writestr(
@@ -110,7 +145,13 @@ class ExamKnowledgePolicyTests(unittest.TestCase):
             self.assertIn("标准试卷模板", serialized)
             self.assertIn("清华题库内部", serialized)
             self.assertTrue(all(row["access_scope"] == "teacher_exam" for row in rows))
+            self.assertTrue(all(row["visibility"] == "verified_teacher" for row in rows))
+            self.assertTrue(any(row["document_role"] == "mandatory_policy" for row in rows))
             self.assertTrue(any(row["template_standard"] for row in rows))
+            self.assertTrue(any(
+                row["document_role"] == "answer" and "标准答案模板" in row["text"]
+                for row in rows
+            ))
             self.assertEqual(manifest["standard_template_sha256"], build_teacher_exam_kb._source_hash(template))
             self.assertNotIn("password", serialized.lower())
             self.assertNotIn("password", json.dumps(manifest, ensure_ascii=False).lower())

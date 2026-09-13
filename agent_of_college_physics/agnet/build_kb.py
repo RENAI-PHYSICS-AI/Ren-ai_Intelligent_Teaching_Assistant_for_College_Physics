@@ -370,10 +370,15 @@ def archive_listing(path: Path) -> str:
         return ""
 
 
+def relative_source_path(path: Path, root: Path) -> Path:
+    """Compare canonical paths, including Windows short/long directory aliases."""
+    return path.resolve().relative_to(root.resolve())
+
+
 def record_parts(records: list[dict], path: Path, parts: list[tuple[int, str, str]], source_type: str,
                  priority: float, forced_chapter: str | None = None, *,
                  materials_root: Path | None = None) -> int:
-    relative = path.relative_to(materials_root or MATERIALS_DIR).as_posix()
+    relative = relative_source_path(path, materials_root or MATERIALS_DIR).as_posix()
     added = 0
     for number, locator, text in parts:
         text = clean(text)
@@ -475,7 +480,7 @@ def import_existing_knowledge_bases(records: list[dict], stats: Counter, failure
                     added += 1
                 except (json.JSONDecodeError, TypeError, ValueError) as exc:
                     invalid += 1
-                    failures.append({"file": path.relative_to(KB_DIR).as_posix(), "line": line_no, "error": str(exc)})
+                    failures.append({"file": relative_source_path(path, KB_DIR).as_posix(), "line": line_no, "error": str(exc)})
         stats[f"imported_{path.stem}_chunks"] += added
         stats[f"imported_{path.stem}_duplicates"] += skipped
         stats[f"imported_{path.stem}_invalid"] += invalid
@@ -529,7 +534,7 @@ def merge_imports_only() -> dict:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
     manifest.update({"chunks": len(records), "base_chunks": base_chunks, "imported_knowledge_bases": imported,
                      "import_failures": failures,
-                     "excluded_materials": [TEACHER_MATERIALS_DIR.relative_to(PROJECT_ROOT).as_posix()],
+                     "excluded_materials": [relative_source_path(TEACHER_MATERIALS_DIR, PROJECT_ROOT).as_posix()],
                      "policy": "祝之光教材优先，教师专用目录除外，其他教学素材补充，竞赛专题知识库增强"})
     manifest["by_type"] = {**manifest.get("by_type", {}), **dict(sorted(stats.items()))}
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -540,11 +545,19 @@ def build() -> dict:
     textbook, solution = find_primary_pdfs()
     records: list[dict] = []
     stats = Counter(); failures = []
-    all_files = sorted(
-        p
-        for p in MATERIALS_DIR.rglob("*")
-        if p.is_file() and not is_teacher_private_material(p)
-    )
+    all_files: list[Path] = []
+    for path in sorted(MATERIALS_DIR.rglob("*")):
+        if not path.is_file() or is_teacher_private_material(path):
+            continue
+        try:
+            relative_source_path(path, MATERIALS_DIR)
+        except (OSError, ValueError):
+            # The lexical path identifies the skipped link without exposing or
+            # trying to relativize its target outside the allowed source tree.
+            failures.append({"file": path.relative_to(MATERIALS_DIR).as_posix(),
+                             "error": "源文件位于允许的资料目录之外，已跳过"})
+            continue
+        all_files.append(path)
     try:
       for path in all_files:
         ext = path.suffix.lower()
@@ -567,7 +580,7 @@ def build() -> dict:
                 source_type += f"（{extractor_name}提取）"
                 if legacy_failures:
                     failures.append({
-                        "file": path.relative_to(MATERIALS_DIR).as_posix(),
+                        "file": relative_source_path(path, MATERIALS_DIR).as_posix(),
                         "warning": "；".join(legacy_failures)
                         + ("；已回退到二进制恢复" if extractor_name == "二进制恢复" else ""),
                     })
@@ -581,7 +594,7 @@ def build() -> dict:
             stats[f"{ext}_files"] += 1; stats[f"{ext}_chunks"] += added
             if not added:
                 # Every file still becomes discoverable, including videos and image-only documents.
-                relative = path.relative_to(MATERIALS_DIR).as_posix()
+                relative = relative_source_path(path, MATERIALS_DIR).as_posix()
                 records.append({"id": _stable_record_id("catalog", relative, 0, 0), "source": path.name,
                                 "source_type": "资源目录索引", "page": 0,
                                 "chapter": classify(path.stem),
@@ -595,17 +608,17 @@ def build() -> dict:
     for i, chapter in enumerate(CHAPTERS, 1):
         records.append({"id": f"chapter-{i}", "source": TEXTBOOK_NAME, "source_type": "章节索引",
                         "page": 0, "chapter": chapter, "text": f"{chapter}。以祝之光《物理学》第5版为基准，其他教学材料仅作补充。",
-                        "relative_path": textbook.relative_to(MATERIALS_DIR).as_posix(), "locator": "章节索引", "priority": 1.5})
+                        "relative_path": relative_source_path(textbook, MATERIALS_DIR).as_posix(), "locator": "章节索引", "priority": 1.5})
     base_chunks = len(records)
     imported = import_existing_knowledge_bases(records, stats, failures)
     _write_records(records)
     manifest = {"chunks": len(records), "files_scanned": len(all_files), "failures": failures,
                 "by_type": dict(sorted(stats.items())),
-                "primary_textbook": textbook.relative_to(PROJECT_ROOT).as_posix(),
-                "primary_solution": solution.relative_to(PROJECT_ROOT).as_posix(),
+                "primary_textbook": relative_source_path(textbook, PROJECT_ROOT).as_posix(),
+                "primary_solution": relative_source_path(solution, PROJECT_ROOT).as_posix(),
                 "base_chunks": base_chunks,
                 "imported_knowledge_bases": imported,
-                "excluded_materials": [TEACHER_MATERIALS_DIR.relative_to(PROJECT_ROOT).as_posix()],
+                "excluded_materials": [relative_source_path(TEACHER_MATERIALS_DIR, PROJECT_ROOT).as_posix()],
                 "policy": "祝之光教材优先，教师专用目录除外，其他教学素材补充，竞赛专题知识库增强"}
     (KB_DIR / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     return manifest

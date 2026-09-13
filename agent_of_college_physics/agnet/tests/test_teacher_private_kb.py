@@ -53,7 +53,11 @@ def read_jsonl(path: Path) -> list[dict]:
 class TeacherPrivateKnowledgeBaseTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
-        self.root = Path(self.temporary.name)
+        # Keep the configured roots deliberately noncanonical.  This reproduces
+        # mixed resolved/raw paths on all OSes, including Windows 8.3 aliases.
+        alias_component = Path(self.temporary.name) / "path-alias"
+        alias_component.mkdir()
+        self.root = alias_component / ".."
 
     def tearDown(self) -> None:
         self.temporary.cleanup()
@@ -153,9 +157,118 @@ class TeacherPrivateKnowledgeBaseTests(unittest.TestCase):
             )
         )
         self.assertEqual(manifest["files_scanned"], 3)
+        self.assertEqual(manifest["failures"], [])
+        self.assertEqual(manifest["primary_textbook"], "教学素材/教材/物理学.pdf")
+        self.assertEqual(manifest["primary_solution"], "教学素材/教材/物理学习题解答.pdf")
         self.assertEqual(
             manifest["excluded_materials"], ["教学素材/教师专用"]
         )
+
+    def test_public_record_paths_and_ids_match_for_canonical_and_alias_roots(self) -> None:
+        materials = self.root / "教学素材"
+        materials.mkdir()
+        source = materials / "公开资料.md"
+        text = "公开资料讲解动量守恒、机械能守恒和实验误差分析，供大学物理课堂学习参考。"
+        source.write_text(text, encoding="utf-8")
+        canonical_records: list[dict] = []
+        alias_records: list[dict] = []
+        build_kb.record_parts(
+            canonical_records, source.resolve(), [(1, "全文", text)], "测试", 1.0,
+            materials_root=materials.resolve(),
+        )
+        build_kb.record_parts(
+            alias_records, source.resolve(), [(1, "全文", text)], "测试", 1.0,
+            materials_root=materials,
+        )
+        self.assertEqual(canonical_records, alias_records)
+        self.assertEqual(alias_records[0]["relative_path"], "公开资料.md")
+
+    def test_private_paths_normalize_aliases_without_accepting_outside_sources(self) -> None:
+        project_root = self.root / "project"
+        materials = project_root / "教学素材"
+        private_dir = materials / "教师专用" / "教研考试"
+        private_dir.mkdir(parents=True)
+        source = private_dir / "试题.md"
+        source.write_text("试题", encoding="utf-8")
+        outside = materials / "公开资料.md"
+        outside.write_text("公开资料", encoding="utf-8")
+        with (
+            tempfile.TemporaryDirectory() as external_root,
+            patch.multiple(
+                build_teacher_exam_kb,
+                PROJECT_ROOT=project_root,
+                MATERIALS_DIR=materials,
+                EXAM_MATERIALS_DIR=Path(external_root),
+                TEACHER_EXAM_MATERIALS_DIR=private_dir,
+            ),
+        ):
+            self.assertEqual(build_teacher_exam_kb.source_roots(), (private_dir.resolve(),))
+            self.assertEqual(
+                build_teacher_exam_kb._relative(source.resolve(), private_dir),
+                "教师专用/教研考试/试题.md",
+            )
+            with self.assertRaises(ValueError):
+                build_teacher_exam_kb._relative(outside.resolve(), private_dir)
+            with self.assertRaises(ValueError):
+                build_kb.relative_source_path(outside.resolve(), private_dir)
+
+    def test_builders_skip_links_resolving_outside_the_allowed_source_tree(self) -> None:
+        project_root = self.root / "project"
+        materials = project_root / "教学素材"
+        textbook_dir = materials / "教材"
+        teacher_dir = materials / "教师专用"
+        private_dir = teacher_dir / "教研考试"
+        kb_dir = project_root / "agnet" / "knowledge_base"
+        imports_dir = kb_dir / "imports"
+        for directory in (textbook_dir, private_dir, imports_dir):
+            directory.mkdir(parents=True)
+        for name in ("物理学.pdf", "物理学习题解答.pdf"):
+            (textbook_dir / name).write_bytes(b"test")
+        secret = "根外教师机密答案与评分细则不能通过符号链接或目录联接进入知识库。" * 2
+        links = (materials / "external-link.md", private_dir / "external-link.md")
+        for link in links:
+            link.write_text(secret, encoding="utf-8")
+        (private_dir / "保留资料.md").write_text("允许的教师资料用于大学物理命题蓝图、课程目标权重、章节覆盖比例和试题难度复核。", encoding="utf-8")
+
+        original_resolve = Path.resolve
+        resolved_links = {original_resolve(link) for link in links}
+        external_target = (self.root / "outside-materials" / "教师机密.md").resolve()
+
+        def resolve_link(path: Path, *args, **kwargs) -> Path:
+            resolved = original_resolve(path, *args, **kwargs)
+            return external_target if resolved in resolved_links else resolved
+
+        # Emulate symlink/junction resolution without requiring Windows link
+        # privileges.  Reaching the extractor would reveal the sentinel above.
+        with (
+            patch.object(Path, "resolve", resolve_link),
+            patch.multiple(
+                build_kb, PROJECT_ROOT=project_root, MATERIALS_DIR=materials,
+                TEXTBOOK_DIR=textbook_dir, TEACHER_MATERIALS_DIR=teacher_dir,
+                KB_DIR=kb_dir, KB_FILE=kb_dir / "chunks.jsonl", IMPORTED_KB_DIR=imports_dir,
+            ),
+            patch.object(build_kb, "pdf_pages", return_value=["公开教材正文包含大学物理知识以及公式推导与实验误差分析的完整教学内容。"]),
+            patch.multiple(
+                build_teacher_exam_kb, PROJECT_ROOT=project_root, MATERIALS_DIR=materials,
+                EXAM_MATERIALS_DIR=project_root / "missing-exams",
+                TEACHER_EXAM_MATERIALS_DIR=private_dir,
+                TEACHER_EXAM_KB_FILE=kb_dir / "private" / "teacher_exam.jsonl",
+                TEACHER_EXAM_KB_MANIFEST_FILE=kb_dir / "private" / "teacher_exam.manifest.json",
+            ),
+        ):
+            public_manifest = build_kb.build()
+            private_manifest = build_teacher_exam_kb.build()
+
+        public_rows = read_jsonl(kb_dir / "chunks.jsonl")
+        private_rows = read_jsonl(kb_dir / "private" / "teacher_exam.jsonl")
+        self.assertTrue(public_rows)
+        self.assertEqual(len(private_rows), 1)
+        self.assertNotIn(secret, json.dumps(public_rows + private_rows, ensure_ascii=False))
+        self.assertEqual(public_manifest["files_scanned"], 2)
+        self.assertEqual(public_manifest["failures"], [{"file": "external-link.md", "error": "源文件位于允许的资料目录之外，已跳过"}])
+        self.assertEqual(private_manifest["files_scanned"], 1)
+        self.assertEqual(private_manifest["skipped"], [{"file": "external-link.md", "reason": "源文件位于允许的资料目录之外，已跳过"}])
+        self.assertEqual(private_manifest["failures"], [])
 
     def test_merge_imports_removes_legacy_private_rows(self) -> None:
         kb_dir = self.root / "knowledge_base"
