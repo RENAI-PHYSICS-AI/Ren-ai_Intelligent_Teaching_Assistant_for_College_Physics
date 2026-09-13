@@ -30,8 +30,19 @@ def issue_logout_ticket(secret: str, username: str, ttl_seconds: int = 60) -> st
     return admin_auth.issue_token(secret, username, "user-logout", ttl_seconds)
 
 
-def issue_session(secret: str, username: str, ttl_seconds: int) -> str:
-    return admin_auth.issue_token(secret, username, "user-session", ttl_seconds)
+def issue_session(
+    secret: str,
+    username: str,
+    ttl_seconds: int,
+    session_version: int = 1,
+) -> str:
+    return admin_auth.issue_token(
+        secret,
+        username,
+        "user-session",
+        ttl_seconds,
+        {"session_version": max(1, int(session_version))},
+    )
 
 
 def verify_login_ticket(secret: str, ticket: str) -> dict | None:
@@ -55,5 +66,12 @@ def resolve_session(
     if not account or not account.get("is_active"):
         return None
     if str(account.get("username", "")).casefold() != str(payload["sub"]).casefold():
+        return None
+    try:
+        token_version = int(payload["session_version"])
+        account_version = int(account.get("session_version", 1))
+    except (KeyError, TypeError, ValueError):
+        return None
+    if token_version != account_version:
         return None
     return dict(account)

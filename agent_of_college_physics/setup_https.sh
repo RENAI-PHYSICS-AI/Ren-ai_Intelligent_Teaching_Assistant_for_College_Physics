@@ -10,16 +10,25 @@ fi
 APP_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE="$APP_ROOT/config/physics-assistant.env"
 TLS_ROOT="$APP_ROOT/config/tls"
+[[ -f "$CONFIG_FILE" ]] || { echo "请先执行 bash install.sh。" >&2; exit 1; }
+set -a
+# shellcheck disable=SC1090
+source "$CONFIG_FILE"
+set +a
 SERVER_IP="${PHYSICS_HTTPS_HOST:-$(hostname -I 2>/dev/null | awk '{print $1}')}"
+HTTPS_LISTEN_HOST="${PHYSICS_GATEWAY_HTTPS_HOST:-0.0.0.0}"
 HTTPS_PORT="${PHYSICS_GATEWAY_HTTPS_PORT:-8443}"
-PUBLIC_PREFIX="/${PHYSICS_GATEWAY_PUBLIC_PREFIX:-agent}"
+PUBLIC_PREFIX="${PHYSICS_GATEWAY_PUBLIC_PREFIX:-/agent}"
 PUBLIC_PREFIX="/${PUBLIC_PREFIX#/}"
 PUBLIC_PREFIX="${PUBLIC_PREFIX%/}"
 
 [[ -n "$SERVER_IP" ]] || { echo "无法确定服务器 IP，请设置 PHYSICS_HTTPS_HOST。" >&2; exit 1; }
+[[ "$HTTPS_LISTEN_HOST" =~ ^[A-Za-z0-9:.%_-]+$ ]] || {
+  echo "HTTPS 监听地址无效：$HTTPS_LISTEN_HOST" >&2
+  exit 1
+}
 [[ "$HTTPS_PORT" =~ ^[0-9]+$ ]] || { echo "HTTPS 端口无效：$HTTPS_PORT" >&2; exit 1; }
 command -v openssl >/dev/null 2>&1 || { echo "缺少 openssl。" >&2; exit 1; }
-[[ -f "$CONFIG_FILE" ]] || { echo "请先执行 bash install.sh。" >&2; exit 1; }
 
 mkdir -p "$TLS_ROOT" "$APP_ROOT/.runtime/tmp"
 chmod 700 "$TLS_ROOT"
@@ -92,6 +101,8 @@ set_env_value() {
   mv -- "$output" "$CONFIG_FILE"
 }
 
+set_env_value PHYSICS_GATEWAY_HOST "127.0.0.1"
+set_env_value PHYSICS_GATEWAY_HTTPS_HOST "$HTTPS_LISTEN_HOST"
 set_env_value PHYSICS_GATEWAY_HTTPS_PORT "$HTTPS_PORT"
 set_env_value PHYSICS_GATEWAY_TLS_CERT "config/tls/server.crt"
 set_env_value PHYSICS_GATEWAY_TLS_KEY "config/tls/server.key"
@@ -103,5 +114,6 @@ chmod 600 "$CONFIG_FILE"
 
 echo
 echo "HTTPS/WSS 已启动：https://$SERVER_IP:$HTTPS_PORT$PUBLIC_PREFIX/"
+echo "HTTPS 监听地址：$HTTPS_LISTEN_HOST:$HTTPS_PORT（HTTP 8501 仍仅监听 127.0.0.1）"
 echo "客户端必须信任此 CA 公钥：$CA_CERT"
 echo "CA 私钥仅保存在服务器：$CA_KEY（权限 0600，请勿分发）"

@@ -1,0 +1,61 @@
+name: quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-integrity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Compile Python sources
+        run: python -m compileall -q agnet agent_of_college_physics/agnet tools
+      - name: Validate Rocky shell syntax
+        run: find agent_of_college_physics -type f -name '*.sh' -exec bash -n {} +
+      - name: Check Windows and Rocky runtime synchronization
+        run: python tools/check_runtime_sync.py
+      - name: Check portable paths
+        run: python check_portable_paths.py
+
+  tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: agent_of_college_physics/requirements.lock
+      - name: Install locked dependencies
+        run: python -m pip install --requirement agent_of_college_physics/requirements.lock pytest==8.4.2
+      - name: Test primary runtime
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          PHYSICS_SKIP_LOCAL_ASSET_TESTS: "1"
+        run: python -m pytest -q -p no:cacheprovider agnet/tests
+      - name: Test Rocky release snapshot
+        if: runner.os == 'Linux'
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          PHYSICS_SKIP_LOCAL_ASSET_TESTS: "1"
+        run: python -m pytest -q -p no:cacheprovider agent_of_college_physics/agnet/tests

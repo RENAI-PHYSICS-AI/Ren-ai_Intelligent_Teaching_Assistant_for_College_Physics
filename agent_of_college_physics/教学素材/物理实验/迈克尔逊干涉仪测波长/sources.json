@@ -1,0 +1,133 @@
+[
+  {
+    "id": "michelson_wavelength-01",
+    "authors": [
+      "A. A. Michelson"
+    ],
+    "year": 1881,
+    "title": "The Relative Motion of the Earth and the Luminiferous Ether",
+    "publisher": "American Journal of Science",
+    "type": "核心题录",
+    "topic": "迈克尔逊干涉仪早期经典论文",
+    "url": "https://doi.org/10.2475/ajs.s3-22.128.120",
+    "local_file": null
+  },
+  {
+    "id": "michelson_wavelength-02",
+    "authors": [
+      "A. A. Michelson",
+      "E. W. Morley"
+    ],
+    "year": 1887,
+    "title": "On the Relative Motion of the Earth and the Luminiferous Ether",
+    "publisher": "American Journal of Science",
+    "type": "核心题录",
+    "topic": "经典干涉实验",
+    "url": "https://history.aip.org/exhibits/gap/PDF/michelson.pdf",
+    "local_file": null
+  },
+  {
+    "id": "michelson_wavelength-03",
+    "authors": [
+      "A. A. Michelson"
+    ],
+    "year": 1902,
+    "title": "Light Waves and Their Uses",
+    "publisher": "University of Chicago Press",
+    "type": "核心题录",
+    "topic": "干涉测量经典专著",
+    "url": "https://archive.org/details/lightwavesandth00michgoog",
+    "local_file": null
+  },
+  {
+    "id": "michelson_wavelength-04",
+    "authors": [
+      "MIT Physics"
+    ],
+    "year": 2017,
+    "title": "Optical Interferometer Lab Guide",
+    "publisher": "MIT OpenCourseWare",
+    "type": "开放全文",
+    "topic": "光路调节与波长测量",
+    "url": "https://ocw.mit.edu/courses/8-13-14-experimental-physics-i-ii-junior-lab-fall-2016-spring-2017/resources/mit8_13-14f16-s17expiii/",
+    "local_file": "ref/MIT_Optical_Interferometer.pdf"
+  },
+  {
+    "id": "michelson_wavelength-05",
+    "authors": [
+      "MIT EECS"
+    ],
+    "year": 2005,
+    "title": "Coherence and Interferometry Laboratory",
+    "publisher": "MIT OpenCourseWare",
+    "type": "开放全文",
+    "topic": "迈克尔逊相干实验",
+    "url": "https://ocw.mit.edu/courses/6-161-modern-optics-project-laboratory-fall-2005/resources/lab2/",
+    "local_file": "ref/MIT_Coherence_Interferometry.pdf"
+  },
+  {
+    "id": "michelson_wavelength-06",
+    "authors": [
+      "K. Modjtahedzadeh"
+    ],
+    "year": 2020,
+    "title": "Wavelength and Refractive Indices from Interferometry",
+    "publisher": "arXiv",
+    "type": "开放全文",
+    "topic": "He-Ne 波长和折射率测量",
+    "url": "https://arxiv.org/abs/2001.02066",
+    "local_file": "ref/Modjtahedzadeh_2020_Interferometry.pdf"
+  },
+  {
+    "id": "michelson_wavelength-07",
+    "authors": [
+      "B. P. Abbott et al."
+    ],
+    "year": 2009,
+    "title": "LIGO: The Laser Interferometer Gravitational-Wave Observatory",
+    "publisher": "Reports on Progress in Physics",
+    "type": "核心题录",
+    "topic": "精密激光干涉应用",
+    "url": "https://doi.org/10.1088/0034-4885/72/7/076901",
+    "local_file": null
+  },
+  {
+    "id": "michelson_wavelength-08",
+    "authors": [
+      "NIST"
+    ],
+    "year": 2019,
+    "title": "SI Brochure: Realization of the Metre",
+    "publisher": "NIST/BIPM",
+    "type": "核心题录",
+    "topic": "波长与长度溯源",
+    "url": "https://www.bipm.org/en/publications/si-brochure",
+    "local_file": null
+  },
+  {
+    "id": "michelson_wavelength-09",
+    "authors": [
+      "JCGM"
+    ],
+    "year": 2008,
+    "title": "Guide to the Expression of Uncertainty in Measurement",
+    "publisher": "BIPM",
+    "type": "核心题录",
+    "topic": "位移和计数不确定度",
+    "url": "https://doi.org/10.59161/JCGM100-2008E",
+    "local_file": null
+  },
+  {
+    "id": "michelson_wavelength-10",
+    "authors": [
+      "PASCO Scientific"
+    ],
+    "year": 2017,
+    "title": "Precision Interferometer Manual",
+    "publisher": "PASCO",
+    "type": "核心题录",
+    "topic": "教学仪器与回程差",
+    "url": "https://www.pasco.com/products/lab-apparatus/light-and-optics/interferometry/os-9255a",
+    "local_file": null
+  }
+]

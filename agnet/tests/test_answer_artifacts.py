@@ -53,7 +53,7 @@ class AnswerArtifactsTests(unittest.TestCase):
     def test_answer_filename_uses_pdf_name_and_handles_multiple_files(self) -> None:
         self.assertEqual(answer_artifacts.answer_filename_stem(None), "大学物理参考答案")
         self.assertEqual(
-            answer_artifacts.answer_filename_stem([r"C:\upload\25262大物1补考试卷.pdf"]),
+            answer_artifacts.answer_filename_stem([r"C:\upload\25262大物1补考试卷.pdf"]),  # portable-path-test-fixture
             "25262大物1补考试卷_参考答案",
         )
         self.assertEqual(

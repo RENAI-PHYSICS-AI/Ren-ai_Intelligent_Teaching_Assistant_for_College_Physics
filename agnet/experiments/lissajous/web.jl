@@ -12,6 +12,8 @@ using LinearAlgebra
 using Printf
 using WGLMakie
 
+include(joinpath(@__DIR__, "..", "playback_lifecycle.jl"))
+
 const TWO_PI = 2pi
 const ACCENT_X = RGBf(0.18, 0.78, 0.92)
 const ACCENT_Y = RGBf(0.94, 0.35, 0.50)
@@ -237,6 +239,7 @@ end
 
 function bind_playback!(grid, progress_slider, reset_values)
     playing = Observable(false)
+    generation = Ref(0)
     play_button = Makie.Button(
         grid[1, 1],
         label = "播放",
@@ -253,10 +256,12 @@ function bind_playback!(grid, progress_slider, reset_values)
     )
     on(play_button.clicks) do _
         playing[] = !playing[]
+        generation[] += 1
+        current_generation = generation[]
         play_button.label[] = playing[] ? "暂停" : "播放"
         if playing[]
             @async begin
-                while playing[]
+                while playing[] && generation[] == current_generation
                     current = progress_slider.value[]
                     next_value = current >= 1000 ? 0 : min(1000, current + 8)
                     set_close_to!(progress_slider, next_value)
@@ -265,9 +270,15 @@ function bind_playback!(grid, progress_slider, reset_values)
             end
         end
     end
-    on(reset_button.clicks) do _
+    cancel_playback! = () -> begin
         playing[] = false
+        generation[] += 1
         play_button.label[] = "播放"
+        nothing
+    end
+    register_playback_cancel!(cancel_playback!)
+    on(reset_button.clicks) do _
+        cancel_playback!()
         for (slider, value) in reset_values
             set_close_to!(slider, value)
         end
@@ -713,11 +724,12 @@ const CLIENT_STATUS_SCRIPT = """
 """
 
 function experiment_app(title, builder)
-    return Bonito.App(; title = title) do
-        figure = builder()
+    return Bonito.App(; title = title) do session::Bonito.Session
+        playback = build_with_playback_lifecycle(session, builder)
         return DOM.div(
             DOM.style(PAGE_STYLE),
-            DOM.div(figure; class = "lab-page"),
+            DOM.div(playback.figure; class = "lab-page"),
+            playback.lifecycle_script,
             DOM.script(CLIENT_STATUS_SCRIPT),
         )
     end

@@ -11,6 +11,8 @@ using Bonito
 using Printf
 using WGLMakie
 
+include(joinpath(@__DIR__, "..", "playback_lifecycle.jl"))
+
 const DOM = Bonito.DOM
 const Slider = WGLMakie.Makie.Slider
 const Button = WGLMakie.Makie.Button
@@ -272,10 +274,15 @@ function bind_playback!(grid, row, playback_slider, playback_range, reset_values
             end
         end
     end
-    on(reset_button.clicks) do _
+    cancel_playback! = () -> begin
         playing[] = false
         generation[] += 1
         play_button.label[] = "播放"
+        nothing
+    end
+    register_playback_cancel!(cancel_playback!)
+    on(reset_button.clicks) do _
+        cancel_playback!()
         for (slider, value) in reset_values
             set_close_to!(slider, value)
         end
@@ -1006,11 +1013,12 @@ const CLIENT_STATUS_SCRIPT = """
 """
 
 function experiment_app(title, builder)
-    return Bonito.App(; title = title) do
-        figure = builder()
+    return Bonito.App(; title = title) do session::Bonito.Session
+        playback = build_with_playback_lifecycle(session, builder)
         DOM.div(
             DOM.style(PAGE_STYLE),
-            DOM.div(figure; class = "young-modulus-lab"),
+            DOM.div(playback.figure; class = "young-modulus-lab"),
+            playback.lifecycle_script,
             DOM.script(CLIENT_STATUS_SCRIPT),
         )
     end

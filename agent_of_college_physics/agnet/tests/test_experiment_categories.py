@@ -19,6 +19,7 @@ EXPECTED_GROUPS = {
         "固体比热容的测定",
         "温度传感器特性的测定",
         "固体热传导系数测定",
+        "气体γ常数测定",
     ),
     "振动波动": ("声速测量", "李萨如图形"),
     "电磁实验": (
@@ -32,21 +33,54 @@ EXPECTED_GROUPS = {
         "双棱镜干涉",
         "薄透镜焦距的测定",
         "三棱镜折射率测定",
+        "光栅干涉",
+        "光的偏振研究",
+        "迈克尔逊干涉仪测波长",
     ),
     "近代物理实验": ("光电效应", "弗兰克-赫兹"),
 }
 
 
 class ExperimentCategoryTests(unittest.TestCase):
+    def test_registry_is_the_single_source_for_hub_metadata(self) -> None:
+        definitions = experiment_hub.EXPERIMENT_REGISTRY
+        self.assertEqual(len(definitions), 22)
+        self.assertEqual(len({definition.name for definition in definitions}), 22)
+        self.assertEqual(len({definition.service.key for definition in definitions}), 22)
+
+        projected_groups = {
+            category: tuple(
+                definition.name
+                for definition in definitions
+                if definition.category == category
+            )
+            for category in dict.fromkeys(
+                definition.category for definition in definitions
+            )
+        }
+        self.assertEqual(experiment_hub.EXPERIMENT_GROUPS, projected_groups)
+        for definition in definitions:
+            with self.subTest(experiment=definition.name):
+                self.assertIs(
+                    experiment_hub.EXPERIMENT_SERVICE_BY_NAME[definition.name],
+                    definition.service,
+                )
+                self.assertIs(
+                    experiment_hub.SERVICES[definition.service.key],
+                    definition.service,
+                )
+                self.assertEqual(
+                    experiment_hub.EXPERIMENT_CATEGORY_BY_NAME[definition.name],
+                    definition.category,
+                )
+
     def test_groups_match_the_course_taxonomy_without_duplicates(self) -> None:
         self.assertEqual(experiment_hub.EXPERIMENT_GROUPS, EXPECTED_GROUPS)
         self.assertEqual(list(experiment_hub.EXPERIMENT_GROUPS), list(EXPECTED_GROUPS))
         experiments = [
-            name
-            for names in experiment_hub.EXPERIMENT_GROUPS.values()
-            for name in names
+            definition.name for definition in experiment_hub.EXPERIMENT_REGISTRY
         ]
-        self.assertEqual(len(experiments), 18)
+        self.assertEqual(len(experiments), 22)
         self.assertEqual(len(experiments), len(set(experiments)))
 
     def test_biprism_uses_full_display_name_but_keeps_canonical_state(self) -> None:
@@ -79,6 +113,7 @@ class ExperimentCategoryTests(unittest.TestCase):
             "sidebar_specific_heat": ("固体比热容的测定", "热学实验"),
             "sidebar_temperature_sensor": ("温度传感器特性的测定", "热学实验"),
             "sidebar_thermal_conductivity": ("固体热传导系数测定", "热学实验"),
+            "sidebar_gas_gamma": ("气体γ常数测定", "热学实验"),
             "sidebar_sound_speed": ("声速测量", "振动波动"),
             "sidebar_lissajous": ("李萨如图形", "振动波动"),
             "sidebar_electron_em": ("电子荷质比", "电磁实验"),
@@ -89,6 +124,9 @@ class ExperimentCategoryTests(unittest.TestCase):
             "sidebar_biprism": ("双棱镜干涉", "光学实验"),
             "sidebar_thin_lens_focal": ("薄透镜焦距的测定", "光学实验"),
             "sidebar_prism_refractive_index": ("三棱镜折射率测定", "光学实验"),
+            "sidebar_grating_interference": ("光栅干涉", "光学实验"),
+            "sidebar_light_polarization": ("光的偏振研究", "光学实验"),
+            "sidebar_michelson_wavelength": ("迈克尔逊干涉仪测波长", "光学实验"),
             "sidebar_photoelectric": ("光电效应", "近代物理实验"),
             "sidebar_franck_hertz": ("弗兰克-赫兹", "近代物理实验"),
         }

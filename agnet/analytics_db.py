@@ -1,6 +1,7 @@
 """大学物理智能助教的用户、问答、反馈与学情分析数据库。"""
 import sqlite3
 import json
+import logging
 import time
 import uuid
 import hashlib
@@ -9,15 +10,144 @@ from datetime import datetime
 from config import APP_DIR
 
 DB_PATH = str(APP_DIR / "data" / "assistant.db")
+DB_BUSY_TIMEOUT_MS = 5_000
+DB_INIT_ATTEMPTS = 4
+
+# Analytics must never be an unbounded duplicate of conversation storage.
+# Anonymous payloads are deliberately much smaller because no account quota can
+# be applied to them; authenticated payloads still have a finite persistence cap.
+ANONYMOUS_QUESTION_MAX_BYTES = 4 * 1024
+ANONYMOUS_ANSWER_MAX_BYTES = 16 * 1024
+AUTHENTICATED_QUESTION_MAX_BYTES = 64 * 1024
+AUTHENTICATED_ANSWER_MAX_BYTES = 256 * 1024
+ANONYMOUS_ERROR_MESSAGE_MAX_BYTES = 4 * 1024
+ANONYMOUS_TRACEBACK_MAX_BYTES = 8 * 1024
+AUTHENTICATED_ERROR_MESSAGE_MAX_BYTES = 16 * 1024
+AUTHENTICATED_TRACEBACK_MAX_BYTES = 64 * 1024
+ANONYMOUS_METADATA_MAX_BYTES = 8 * 1024
+AUTHENTICATED_METADATA_MAX_BYTES = 32 * 1024
+ANONYMOUS_FEEDBACK_MAX_BYTES = 2 * 1024
+AUTHENTICATED_FEEDBACK_MAX_BYTES = 8 * 1024
+ANALYTICS_IDENTIFIER_MAX_BYTES = 512
+
+_TRUNCATION_SUFFIX = "\n[内容已截断]"
+_LOGGER = logging.getLogger(__name__)
+_RECOVERABLE_SQLITE_CODES = {
+    getattr(sqlite3, "SQLITE_BUSY", 5),
+    getattr(sqlite3, "SQLITE_LOCKED", 6),
+    getattr(sqlite3, "SQLITE_FULL", 13),
+}
+
+
+def _database_is_locked(exc: BaseException) -> bool:
+    message = str(exc).casefold()
+    return "database is locked" in message or "database table is locked" in message
+
+
+def _is_recoverable_analytics_write_error(exc: BaseException) -> bool:
+    """Return whether a best-effort analytics write may safely be dropped."""
+    error_code = getattr(exc, "sqlite_errorcode", None)
+    if isinstance(error_code, int) and (error_code & 0xFF) in _RECOVERABLE_SQLITE_CODES:
+        return True
+    message = str(exc).casefold()
+    return any(
+        marker in message
+        for marker in (
+            "database is locked",
+            "database table is locked",
+            "database is busy",
+            "database or disk is full",
+            "database is full",
+        )
+    )
+
+
+def _truncate_utf8(value, max_bytes):
+    """Bound persisted text by UTF-8 bytes without cutting a code point."""
+    if value is None:
+        return None
+    text = str(value)
+    encoded = text.encode("utf-8", errors="replace")
+    if len(encoded) <= max_bytes:
+        return text
+    suffix = _TRUNCATION_SUFFIX.encode("utf-8")
+    if max_bytes <= len(suffix):
+        return suffix[:max_bytes].decode("utf-8", errors="ignore")
+    prefix = encoded[: max_bytes - len(suffix)].decode("utf-8", errors="ignore")
+    return prefix + _TRUNCATION_SUFFIX
+
+
+def _analytics_payload_limit(user_id, anonymous_limit, authenticated_limit):
+    return authenticated_limit if user_id else anonymous_limit
+
+
+def _bounded_json(value, max_bytes):
+    if not value:
+        return None
+    serialized = json.dumps(value, ensure_ascii=False, default=str)
+    encoded = serialized.encode("utf-8", errors="replace")
+    if len(encoded) <= max_bytes:
+        return serialized
+    # Preserve valid JSON so dashboard readers never have to parse a cut token.
+    return json.dumps(
+        {"truncated": True, "original_bytes": len(encoded)},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+
+def _rollback_quietly(conn):
+    if conn is None:
+        return
+    try:
+        conn.rollback()
+    except sqlite3.Error:
+        pass
+
+
+def _close_quietly(conn):
+    if conn is None:
+        return
+    try:
+        conn.close()
+    except sqlite3.Error:
+        pass
+
+
+def _run_analytics_write(operation_name, operation, fallback=None):
+    """Commit one best-effort analytics write and always release its connection."""
+    conn = None
+    try:
+        conn = _get_conn()
+        result = operation(conn)
+        conn.commit()
+        return result
+    except Exception as exc:
+        _rollback_quietly(conn)
+        if isinstance(exc, sqlite3.Error) and _is_recoverable_analytics_write_error(exc):
+            # Do not include exception text: it may contain a database path.
+            _LOGGER.warning(
+                "Analytics write '%s' skipped because SQLite is busy or full.",
+                operation_name,
+            )
+            return fallback
+        raise
+    finally:
+        _close_quietly(conn)
 
 
 def _get_conn():
     (APP_DIR / "data").mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, timeout=10)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    return conn
+    conn = sqlite3.connect(DB_PATH, timeout=DB_BUSY_TIMEOUT_MS / 1000)
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute(f"PRAGMA busy_timeout={DB_BUSY_TIMEOUT_MS}")
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA foreign_keys=ON")
+        return conn
+    except Exception:
+        conn.close()
+        raise
 
 
 def _hash_password(password, salt=None):
@@ -42,8 +172,7 @@ def _ensure_column(conn, table, column, definition):
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
-def init_db():
-    conn = _get_conn()
+def _init_db_once(conn):
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,6 +186,9 @@ def init_db():
             password_salt TEXT,
             password_hash TEXT NOT NULL,
             role TEXT DEFAULT 'student',
+            teacher_approval_status TEXT NOT NULL DEFAULT 'not_required',
+            teacher_approval_reviewed_at TEXT,
+            session_version INTEGER NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL,
             last_login TEXT,
             is_active INTEGER DEFAULT 1
@@ -113,7 +245,9 @@ def init_db():
             question TEXT,
             error_type TEXT,
             error_message TEXT,
-            traceback TEXT
+            traceback TEXT,
+            interaction_id INTEGER,
+            agent_mode TEXT
         );
 
         CREATE TABLE IF NOT EXISTS feedback (
@@ -132,6 +266,10 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_errors_timestamp ON error_log(timestamp);
         CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
     """)
+    # Serialize schema inspection and ALTER statements.  Without this write
+    # reservation, two fresh processes can both observe a missing column and
+    # then race to add it.
+    conn.execute("BEGIN IMMEDIATE")
     _ensure_column(conn, "sessions", "user_id", "INTEGER")
     _ensure_column(conn, "sessions", "last_seen", "TEXT")
     _ensure_column(conn, "interactions", "user_id", "INTEGER")
@@ -143,6 +281,8 @@ def init_db():
         "TEXT NOT NULL DEFAULT 'assistant'",
     )
     _ensure_column(conn, "error_log", "user_id", "INTEGER")
+    _ensure_column(conn, "error_log", "interaction_id", "INTEGER")
+    _ensure_column(conn, "error_log", "agent_mode", "TEXT")
     _ensure_column(conn, "feedback", "user_id", "INTEGER")
     _ensure_column(conn, "users", "identity_type", "TEXT")
     _ensure_column(conn, "users", "institutional_id", "TEXT")
@@ -152,6 +292,14 @@ def init_db():
     _ensure_column(conn, "users", "salt", "TEXT")
     _ensure_column(conn, "users", "password_salt", "TEXT")
     _ensure_column(conn, "users", "role", "TEXT DEFAULT 'student'")
+    _ensure_column(
+        conn,
+        "users",
+        "teacher_approval_status",
+        "TEXT NOT NULL DEFAULT 'not_required'",
+    )
+    _ensure_column(conn, "users", "teacher_approval_reviewed_at", "TEXT")
+    _ensure_column(conn, "users", "session_version", "INTEGER NOT NULL DEFAULT 1")
     _ensure_column(conn, "users", "last_login", "TEXT")
     _ensure_column(conn, "users", "is_active", "INTEGER DEFAULT 1")
     # Compatibility with accounts created by the original lightweight user system.
@@ -161,7 +309,21 @@ def init_db():
         conn.execute("UPDATE users SET salt=password_salt WHERE salt IS NULL OR salt='' ")
     conn.execute("UPDATE users SET display_name=username WHERE display_name IS NULL OR display_name='' ")
     conn.execute("UPDATE users SET role='student' WHERE role IS NULL OR role='' ")
+    # Existing verified teacher accounts predate the approval workflow and are
+    # grandfathered in. Newly claimed teacher identities are stored as pending.
+    conn.execute(
+        """UPDATE users SET teacher_approval_status='approved'
+           WHERE identity_type='teacher' AND role IN ('teacher', 'admin')
+             AND teacher_approval_status='not_required'"""
+    )
+    conn.execute(
+        """UPDATE users SET teacher_approval_status='pending'
+           WHERE identity_type='teacher' AND COALESCE(identity_verified, 0)=1
+             AND role NOT IN ('teacher', 'admin')
+             AND teacher_approval_status='not_required'"""
+    )
     conn.execute("UPDATE users SET is_active=1 WHERE is_active IS NULL")
+    conn.execute("UPDATE users SET session_version=1 WHERE session_version IS NULL OR session_version<1")
     conn.execute(
         "UPDATE interactions SET agent_mode='assistant' "
         "WHERE agent_mode IS NULL OR TRIM(agent_mode)=''"
@@ -237,7 +399,35 @@ def init_db():
                     (count, session_id),
                 )
     conn.commit()
-    conn.close()
+
+
+def init_db():
+    """Apply idempotent schema migrations with bounded lock retries."""
+    for attempt in range(DB_INIT_ATTEMPTS):
+        conn = None
+        try:
+            conn = _get_conn()
+            _init_db_once(conn)
+            return
+        except sqlite3.OperationalError as exc:
+            if conn is not None:
+                try:
+                    conn.rollback()
+                except sqlite3.Error:
+                    pass
+            if not _database_is_locked(exc) or attempt + 1 >= DB_INIT_ATTEMPTS:
+                raise
+        except Exception:
+            if conn is not None:
+                try:
+                    conn.rollback()
+                except sqlite3.Error:
+                    pass
+            raise
+        finally:
+            if conn is not None:
+                conn.close()
+        time.sleep(min(0.4, 0.05 * (2 ** attempt)))
 
 
 def _normalize_real_name(value):
@@ -426,7 +616,7 @@ def get_identity_roster_stats(limit=1000):
     ).fetchall()
     rows = conn.execute(
         """SELECT r.id, r.identity_type, r.institutional_id, r.real_name, r.is_active,
-                  r.bound_at, u.username
+                  r.bound_at, u.username, u.teacher_approval_status
            FROM identity_roster r
            LEFT JOIN users u ON u.id = r.bound_user_id
            ORDER BY r.identity_type, r.institutional_id
@@ -439,6 +629,7 @@ def get_identity_roster_stats(limit=1000):
         "student_bound": 0,
         "teacher_total": 0,
         "teacher_bound": 0,
+        "teacher_pending": 0,
     }
     for row in counts:
         prefix = row["identity_type"]
@@ -446,6 +637,12 @@ def get_identity_roster_stats(limit=1000):
             summary[f"{prefix}_total"] = int(row["total"] or 0)
             summary[f"{prefix}_bound"] = int(row["bound"] or 0)
     summary["list"] = [dict(row) for row in rows]
+    summary["teacher_pending"] = sum(
+        1
+        for row in rows
+        if row["identity_type"] == "teacher"
+        and row["teacher_approval_status"] == "pending"
+    )
     return summary
 
 
@@ -507,15 +704,17 @@ def create_user(username, password, display_name="", identity_type="", instituti
         if roster["bound_user_id"]:
             raise ValueError(f"该{identity_label}已经绑定账号")
 
-        role = "student" if identity_type == "student" else "teacher"
+        role = "student"
+        approval_status = "pending" if identity_type == "teacher" else "not_required"
         display_name = real_name
         cur = conn.execute(
             """INSERT INTO users
                 (username, display_name, identity_type, institutional_id, real_name,
-                 identity_verified, salt, password_salt, password_hash, role, created_at)
-                VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)""",
+                 identity_verified, salt, password_salt, password_hash, role,
+                 teacher_approval_status, created_at)
+                VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)""",
             (username, display_name, identity_type, institutional_id, real_name,
-             salt, salt, password_hash, role, datetime.now().isoformat()),
+             salt, salt, password_hash, role, approval_status, datetime.now().isoformat()),
         )
         user_id = cur.lastrowid
         conn.execute(
@@ -564,7 +763,9 @@ def ensure_admin_user(username, password, display_name="管理员", update_passw
                 salt, password_hash = _hash_password(password)
                 conn.execute(
                     """UPDATE users SET display_name=?, is_active=1, salt=?,
-                              password_salt=?, password_hash=? WHERE id=?""",
+                              password_salt=?, password_hash=?,
+                              session_version=COALESCE(session_version, 1)+1
+                       WHERE id=?""",
                     (display_name, salt, salt, password_hash, row["id"]),
                 )
                 conn.commit()
@@ -594,7 +795,9 @@ def get_user_by_username(username):
     conn = _get_conn()
     row = conn.execute(
         """SELECT id, username, display_name, role, identity_type, institutional_id,
-                  real_name, identity_verified, created_at, last_login, is_active
+                  real_name, identity_verified, teacher_approval_status,
+                  teacher_approval_reviewed_at, session_version,
+                  created_at, last_login, is_active
            FROM users WHERE username=?""",
         ((username or "").strip(),),
     ).fetchone()
@@ -602,7 +805,14 @@ def get_user_by_username(username):
     return dict(row) if row else None
 
 
-def bind_user_identity(user_id, identity_type, institutional_id, real_name):
+def bind_user_identity(
+    user_id,
+    identity_type,
+    institutional_id,
+    real_name,
+    *,
+    allow_teacher_claim=False,
+):
     """Bind an existing account to one active roster identity."""
     identity_type = (identity_type or "").strip().lower()
     institutional_id = (institutional_id or "").strip()
@@ -611,6 +821,8 @@ def bind_user_identity(user_id, identity_type, institutional_id, real_name):
         raise ValueError("用户账号无效")
     if identity_type not in {"student", "teacher"}:
         raise ValueError("请选择学生或教师身份")
+    if identity_type == "teacher" and not allow_teacher_claim:
+        raise ValueError("教师账号由管理员预置；如需绑定，请联系管理员核验。")
     if not institutional_id or not real_name:
         raise ValueError("学号或工号、姓名不能为空")
 
@@ -641,12 +853,23 @@ def bind_user_identity(user_id, identity_type, institutional_id, real_name):
         if roster["bound_user_id"] and roster["bound_user_id"] != user_id:
             raise ValueError(f"该{identity_label}已经绑定其他账号")
 
-        role = "student" if identity_type == "student" else "teacher"
+        role = "student"
+        approval_status = "pending" if identity_type == "teacher" else "not_required"
         now = datetime.now().isoformat()
         conn.execute(
             """UPDATE users SET display_name=?, identity_type=?, institutional_id=?,
-                      real_name=?, identity_verified=1, role=? WHERE id=?""",
-            (real_name, identity_type, institutional_id, real_name, role, user_id),
+                      real_name=?, identity_verified=1, role=?,
+                      teacher_approval_status=?, teacher_approval_reviewed_at=NULL
+               WHERE id=?""",
+            (
+                real_name,
+                identity_type,
+                institutional_id,
+                real_name,
+                role,
+                approval_status,
+                user_id,
+            ),
         )
         conn.execute(
             """UPDATE identity_roster SET bound_user_id=?, bound_at=?, updated_at=?
@@ -663,6 +886,100 @@ def bind_user_identity(user_id, identity_type, institutional_id, real_name):
     finally:
         conn.close()
     return get_user_by_id(user_id)
+
+
+def get_pending_teacher_approvals(limit=500):
+    """Return verified teacher claims that still need an administrator decision."""
+    safe_limit = max(1, min(int(limit), 1000))
+    conn = _get_conn()
+    rows = conn.execute(
+        """SELECT id, username, display_name, institutional_id, real_name,
+                  created_at, teacher_approval_status
+           FROM users
+           WHERE is_active=1 AND identity_type='teacher'
+             AND COALESCE(identity_verified, 0)=1
+             AND teacher_approval_status='pending'
+           ORDER BY created_at, id
+           LIMIT ?""",
+        (safe_limit,),
+    ).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def review_teacher_approval(user_id, decision):
+    """Approve or reject one verified teacher claim in a single transaction."""
+    normalized = str(decision or "").strip().lower()
+    if normalized not in {"approve", "reject"}:
+        raise ValueError("审批结果必须为 approve 或 reject")
+    try:
+        requested_user_id = int(user_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("用户账号无效") from exc
+
+    conn = _get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        account = conn.execute(
+            """SELECT id, role, identity_type, institutional_id,
+                      identity_verified, is_active, teacher_approval_status
+               FROM users WHERE id=?""",
+            (requested_user_id,),
+        ).fetchone()
+        if not account:
+            raise LookupError("待审批账号不存在")
+        if (
+            not account["is_active"]
+            or account["identity_type"] != "teacher"
+            or not account["identity_verified"]
+        ):
+            raise ValueError("该账号不是有效的教师身份申请")
+        if account["role"] == "admin":
+            raise PermissionError("管理员账号不能通过教师审批接口变更")
+        if account["teacher_approval_status"] != "pending":
+            raise ValueError("该教师身份申请已经处理，不能重复审批")
+
+        next_status = "approved" if normalized == "approve" else "rejected"
+        next_role = "teacher" if normalized == "approve" else "student"
+        now = datetime.now().isoformat()
+        if normalized == "reject":
+            # Release the roster identity so a mistaken or fraudulent claim does
+            # not permanently prevent the real teacher from binding it.
+            conn.execute(
+                """UPDATE identity_roster
+                   SET bound_user_id=NULL, bound_at=NULL, updated_at=?
+                   WHERE bound_user_id=? AND identity_type='teacher'""",
+                (now, requested_user_id),
+            )
+        conn.execute(
+            """UPDATE users
+               SET role=?, teacher_approval_status=?,
+                   teacher_approval_reviewed_at=?,
+                   session_version=session_version + ?,
+                   identity_type=CASE WHEN ?='rejected' THEN NULL ELSE identity_type END,
+                   institutional_id=CASE WHEN ?='rejected' THEN NULL ELSE institutional_id END,
+                   real_name=CASE WHEN ?='rejected' THEN NULL ELSE real_name END,
+                   identity_verified=CASE WHEN ?='rejected' THEN 0 ELSE identity_verified END
+               WHERE id=? AND teacher_approval_status='pending'""",
+            (
+                next_role,
+                next_status,
+                now,
+                1 if normalized == "reject" else 0,
+                next_status,
+                next_status,
+                next_status,
+                next_status,
+                requested_user_id,
+            ),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    return get_user_by_id(requested_user_id)
 
 
 def provision_unbound_teacher_accounts(initial_password):
@@ -712,8 +1029,9 @@ def provision_unbound_teacher_accounts(initial_password):
                 """INSERT INTO users
                    (username, display_name, identity_type, institutional_id,
                     real_name, identity_verified, salt, password_salt,
-                    password_hash, role, created_at, is_active)
-                   VALUES (?, ?, 'teacher', ?, ?, 1, ?, ?, ?, 'teacher', ?, 1)""",
+                    password_hash, role, teacher_approval_status, created_at, is_active)
+                   VALUES (?, ?, 'teacher', ?, ?, 1, ?, ?, ?, 'teacher',
+                           'approved', ?, 1)""",
                 (
                     institutional_id,
                     real_name or institutional_id,
@@ -785,7 +1103,9 @@ def get_user_by_id(user_id):
     conn = _get_conn()
     row = conn.execute(
         """SELECT id, username, display_name, role, identity_type, institutional_id,
-                  real_name, identity_verified, created_at, last_login, is_active
+                  real_name, identity_verified, teacher_approval_status,
+                  teacher_approval_reviewed_at, session_version,
+                  created_at, last_login, is_active
            FROM users WHERE id=?""",
         (user_id,),
     ).fetchone()
@@ -795,26 +1115,35 @@ def get_user_by_id(user_id):
 
 def start_session(user_id=None):
     sid = datetime.now().strftime("ses_%Y%m%d_%H%M%S_") + uuid.uuid4().hex[:6]
-    conn = _get_conn()
-    conn.execute(
-        "INSERT INTO sessions (session_id, start_time, last_seen, user_id) VALUES (?, ?, ?, ?)",
-        (sid, datetime.now().isoformat(), datetime.now().isoformat(), user_id)
-    )
-    conn.commit()
-    conn.close()
+    now = datetime.now().isoformat()
+
+    def write(conn):
+        conn.execute(
+            "INSERT INTO sessions (session_id, start_time, last_seen, user_id) VALUES (?, ?, ?, ?)",
+            (sid, now, now, user_id),
+        )
+        return True
+
+    # Keep returning the server-generated id if analytics is temporarily
+    # unavailable. Callers can continue the user request, while later logging
+    # attempts remain correlated by the same id.
+    _run_analytics_write("start_session", write, fallback=False)
     return sid
 
 
 def touch_session(session_id):
     if not session_id:
-        return
-    conn = _get_conn()
-    conn.execute(
-        "UPDATE sessions SET last_seen=? WHERE session_id=? AND end_time IS NULL",
-        (datetime.now().isoformat(), session_id),
-    )
-    conn.commit()
-    conn.close()
+        return False
+    bounded_session_id = _truncate_utf8(session_id, ANALYTICS_IDENTIFIER_MAX_BYTES)
+
+    def write(conn):
+        cursor = conn.execute(
+            "UPDATE sessions SET last_seen=? WHERE session_id=? AND end_time IS NULL",
+            (datetime.now().isoformat(), bounded_session_id),
+        )
+        return cursor.rowcount > 0
+
+    return _run_analytics_write("touch_session", write, fallback=False)
 
 
 def get_active_session_count(active_minutes=5):
@@ -829,47 +1158,95 @@ def get_active_session_count(active_minutes=5):
 
 
 def end_session(session_id, total_q, total_err, ti, to):
-    conn = _get_conn()
-    conn.execute(
-        """UPDATE sessions SET end_time=?, total_questions=?, total_errors=?,
-           total_tokens_input=?, total_tokens_output=?
-           WHERE session_id=?""",
-        (datetime.now().isoformat(), total_q, total_err, ti, to, session_id)
-    )
-    conn.commit()
-    conn.close()
+    if not session_id:
+        return False
+    bounded_session_id = _truncate_utf8(session_id, ANALYTICS_IDENTIFIER_MAX_BYTES)
+
+    def write(conn):
+        cursor = conn.execute(
+            """UPDATE sessions SET end_time=?, total_questions=?, total_errors=?,
+               total_tokens_input=?, total_tokens_output=?
+               WHERE session_id=?""",
+            (datetime.now().isoformat(), total_q, total_err, ti, to, bounded_session_id),
+        )
+        return cursor.rowcount > 0
+
+    return _run_analytics_write("end_session", write, fallback=False)
 
 
 def log_interaction(session_id, question, answer, chapter, provider, model,
                     tokens_input, tokens_output, response_time_ms, error=None,
                     rag_chunks=None, user_id=None, request_timing=None,
                     agent_mode="assistant"):
-    agent_mode = str(agent_mode or "").strip()
+    agent_mode = _truncate_utf8(
+        str(agent_mode or "").strip(),
+        ANALYTICS_IDENTIFIER_MAX_BYTES,
+    )
     if not agent_mode:
         raise ValueError("agent_mode 不能为空。")
+    question_text = "" if question is None else str(question)
+    answer_text = None if answer is None else str(answer)
+    question_length = len(question_text)
+    answer_length = len(answer_text) if answer_text else 0
+    question_limit = _analytics_payload_limit(
+        user_id,
+        ANONYMOUS_QUESTION_MAX_BYTES,
+        AUTHENTICATED_QUESTION_MAX_BYTES,
+    )
+    answer_limit = _analytics_payload_limit(
+        user_id,
+        ANONYMOUS_ANSWER_MAX_BYTES,
+        AUTHENTICATED_ANSWER_MAX_BYTES,
+    )
+    error_limit = _analytics_payload_limit(
+        user_id,
+        ANONYMOUS_ERROR_MESSAGE_MAX_BYTES,
+        AUTHENTICATED_ERROR_MESSAGE_MAX_BYTES,
+    )
+    metadata_limit = _analytics_payload_limit(
+        user_id,
+        ANONYMOUS_METADATA_MAX_BYTES,
+        AUTHENTICATED_METADATA_MAX_BYTES,
+    )
     timing_details = None
     if request_timing:
-        timing_details = json.dumps(
+        timing_details = _bounded_json(
             {key: round(float(value) * 1000, 1) for key, value in request_timing.items()},
-            ensure_ascii=False,
+            metadata_limit,
         )
-    conn = _get_conn()
-    cursor = conn.execute(
-        """INSERT INTO interactions
-           (session_id, agent_mode, timestamp, question, answer, chapter, provider, model,
-            tokens_input, tokens_output, response_time_ms, error,
-            rag_chunks_used, question_length, answer_length, user_id, timing_details)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (session_id, agent_mode, datetime.now().isoformat(), question, answer, chapter,
-         provider, model, tokens_input, tokens_output, response_time_ms, error,
-         json.dumps(rag_chunks, ensure_ascii=False) if rag_chunks else None,
-         len(question) if question else 0, len(answer) if answer else 0,
-         user_id, timing_details)
+
+    values = (
+        _truncate_utf8(session_id or "", ANALYTICS_IDENTIFIER_MAX_BYTES),
+        agent_mode,
+        datetime.now().isoformat(),
+        _truncate_utf8(question_text, question_limit),
+        _truncate_utf8(answer_text, answer_limit),
+        _truncate_utf8(chapter, ANALYTICS_IDENTIFIER_MAX_BYTES),
+        _truncate_utf8(provider, ANALYTICS_IDENTIFIER_MAX_BYTES),
+        _truncate_utf8(model, ANALYTICS_IDENTIFIER_MAX_BYTES),
+        tokens_input,
+        tokens_output,
+        response_time_ms,
+        _truncate_utf8(error, error_limit),
+        _bounded_json(rag_chunks, metadata_limit),
+        question_length,
+        answer_length,
+        user_id,
+        timing_details,
     )
-    conn.commit()
-    interaction_id = cursor.lastrowid
-    conn.close()
-    return interaction_id
+
+    def write(conn):
+        cursor = conn.execute(
+            """INSERT INTO interactions
+               (session_id, agent_mode, timestamp, question, answer, chapter, provider, model,
+                tokens_input, tokens_output, response_time_ms, error,
+                rag_chunks_used, question_length, answer_length, user_id, timing_details)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            values,
+        )
+        return cursor.lastrowid
+
+    return _run_analytics_write("log_interaction", write, fallback=None)
 
 
 def get_recent_response_timings(limit=30):
@@ -897,43 +1274,101 @@ def get_recent_response_timings(limit=30):
     return result
 
 
-def log_error(session_id, question, error_type, error_message, traceback_str="", user_id=None):
-    conn = _get_conn()
-    conn.execute(
-        """INSERT INTO error_log (session_id, timestamp, question, error_type, error_message, traceback, user_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (session_id, datetime.now().isoformat(), question, error_type, error_message, traceback_str, user_id)
+def log_error(
+    session_id,
+    question,
+    error_type,
+    error_message,
+    traceback_str="",
+    user_id=None,
+    interaction_id=None,
+    agent_mode="assistant",
+):
+    normalized_mode = _truncate_utf8(
+        str(agent_mode or "").strip() or "assistant",
+        ANALYTICS_IDENTIFIER_MAX_BYTES,
     )
-    conn.commit()
-    conn.close()
+    question_limit = _analytics_payload_limit(
+        user_id,
+        ANONYMOUS_QUESTION_MAX_BYTES,
+        AUTHENTICATED_QUESTION_MAX_BYTES,
+    )
+    error_limit = _analytics_payload_limit(
+        user_id,
+        ANONYMOUS_ERROR_MESSAGE_MAX_BYTES,
+        AUTHENTICATED_ERROR_MESSAGE_MAX_BYTES,
+    )
+    traceback_limit = _analytics_payload_limit(
+        user_id,
+        ANONYMOUS_TRACEBACK_MAX_BYTES,
+        AUTHENTICATED_TRACEBACK_MAX_BYTES,
+    )
+    values = (
+        _truncate_utf8(session_id, ANALYTICS_IDENTIFIER_MAX_BYTES),
+        datetime.now().isoformat(),
+        _truncate_utf8(question, question_limit),
+        _truncate_utf8(error_type, ANALYTICS_IDENTIFIER_MAX_BYTES),
+        _truncate_utf8(error_message, error_limit),
+        _truncate_utf8(traceback_str, traceback_limit),
+        user_id,
+        interaction_id,
+        normalized_mode,
+    )
+
+    def write(conn):
+        conn.execute(
+            """INSERT INTO error_log
+               (session_id, timestamp, question, error_type, error_message, traceback,
+                user_id, interaction_id, agent_mode)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            values,
+        )
+        return True
+
+    return _run_analytics_write("log_error", write, fallback=False)
 
 
 def log_feedback(interaction_id, session_id, rating, comment="", user_id=None):
-    conn = _get_conn()
-    conn.execute(
-        "INSERT INTO feedback (interaction_id, session_id, timestamp, rating, comment, user_id) VALUES (?, ?, ?, ?, ?, ?)",
-        (interaction_id, session_id, datetime.now().isoformat(), rating, comment, user_id)
+    comment_limit = _analytics_payload_limit(
+        user_id,
+        ANONYMOUS_FEEDBACK_MAX_BYTES,
+        AUTHENTICATED_FEEDBACK_MAX_BYTES,
     )
-    conn.commit()
-    conn.close()
+    values = (
+        interaction_id,
+        _truncate_utf8(session_id, ANALYTICS_IDENTIFIER_MAX_BYTES),
+        datetime.now().isoformat(),
+        _truncate_utf8(rating, ANALYTICS_IDENTIFIER_MAX_BYTES),
+        _truncate_utf8(comment, comment_limit),
+        user_id,
+    )
+
+    def write(conn):
+        conn.execute(
+            "INSERT INTO feedback (interaction_id, session_id, timestamp, rating, comment, user_id) VALUES (?, ?, ?, ?, ?, ?)",
+            values,
+        )
+        return True
+
+    return _run_analytics_write("log_feedback", write, fallback=False)
 
 
 def delete_interaction(interaction_id, user_id):
     """Delete one conversation record only when it belongs to the user."""
     if not interaction_id or not user_id:
         return False
-    conn = _get_conn()
-    conn.execute(
-        "DELETE FROM feedback WHERE interaction_id=? AND user_id=?",
-        (interaction_id, user_id),
-    )
-    cursor = conn.execute(
-        "DELETE FROM interactions WHERE id=? AND user_id=?",
-        (interaction_id, user_id),
-    )
-    conn.commit()
-    conn.close()
-    return cursor.rowcount > 0
+    def write(conn):
+        conn.execute(
+            "DELETE FROM feedback WHERE interaction_id=? AND user_id=?",
+            (interaction_id, user_id),
+        )
+        cursor = conn.execute(
+            "DELETE FROM interactions WHERE id=? AND user_id=?",
+            (interaction_id, user_id),
+        )
+        return cursor.rowcount > 0
+
+    return _run_analytics_write("delete_interaction", write, fallback=False)
 
 
 def get_user_recent_interactions(user_id, limit=20):
@@ -1091,7 +1526,8 @@ def get_user_stats():
     total_logins = conn.execute("SELECT COUNT(*) FROM sessions WHERE user_id IS NOT NULL").fetchone()[0]
     recent_users = conn.execute(
         """SELECT id, username, display_name, role, identity_type, institutional_id,
-                  real_name, identity_verified, created_at, last_login
+                  real_name, identity_verified, teacher_approval_status,
+                  teacher_approval_reviewed_at, created_at, last_login
            FROM users
            ORDER BY COALESCE(last_login, created_at) DESC
            LIMIT 20"""
@@ -1099,7 +1535,8 @@ def get_user_stats():
     user_list = conn.execute(
         """SELECT u.id, u.username, u.display_name, u.role, u.identity_type,
                   u.institutional_id, u.real_name, u.identity_verified, u.created_at,
-                  u.last_login, u.is_active,
+                  u.last_login, u.is_active, u.teacher_approval_status,
+                  u.teacher_approval_reviewed_at,
                   COUNT(s.session_id) AS login_count,
                   MAX(s.start_time) AS last_session
            FROM users u
@@ -1299,5 +1736,5 @@ def get_learning_analytics():
     }
 
 
-# ==================== Init on import ====================
-init_db()
+if __name__ == "__main__":
+    init_db()

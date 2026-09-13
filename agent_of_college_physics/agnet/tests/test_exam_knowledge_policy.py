@@ -112,12 +112,24 @@ class ExamKnowledgePolicyTests(unittest.TestCase):
             self.assertTrue(all(row["access_scope"] == "teacher_exam" for row in rows))
             self.assertTrue(any(row["template_standard"] for row in rows))
             self.assertEqual(manifest["standard_template_sha256"], build_teacher_exam_kb._source_hash(template))
-            self.assertNotIn("410410", serialized)
-            self.assertNotIn("505505", json.dumps(manifest, ensure_ascii=False))
+            self.assertNotIn("password", serialized.lower())
+            self.assertNotIn("password", json.dumps(manifest, ensure_ascii=False).lower())
 
     def test_source_passwords_are_automatic_and_never_needed_in_cli(self) -> None:
-        with patch.dict("os.environ", {"PHYSICS_EXAM_SOURCE_PASSWORDS": ""}, clear=False):
-            self.assertEqual(build_teacher_exam_kb._passwords(), ("410410", "505505"))
+        with patch.dict(
+            "os.environ",
+            {"PHYSICS_EXAM_SOURCE_PASSWORDS": "first,second", "PHYSICS_PDF_PASSWORDS": "second;third"},
+            clear=False,
+        ):
+            self.assertEqual(build_teacher_exam_kb._passwords(), ("first", "second", "third"))
+
+    def test_source_passwords_are_not_embedded_in_source(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {"PHYSICS_EXAM_SOURCE_PASSWORDS": "", "PHYSICS_PDF_PASSWORDS": ""},
+            clear=False,
+        ), patch.object(build_teacher_exam_kb, "setting", return_value=""):
+            self.assertEqual(build_teacher_exam_kb._passwords(), ())
 
 
 if __name__ == "__main__":

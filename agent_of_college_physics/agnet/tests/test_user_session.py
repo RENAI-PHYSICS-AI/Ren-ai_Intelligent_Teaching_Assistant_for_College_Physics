@@ -17,6 +17,7 @@ if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 
 import admin_api
+import admin_auth
 import gateway
 import user_session
 
@@ -63,7 +64,38 @@ class UserSessionTests(unittest.TestCase):
             "username": "student01",
             "role": "student",
             "is_active": 1,
+            "session_version": 1,
         }
+
+    def test_admin_session_is_revoked_when_account_version_changes(self) -> None:
+        admin_account = dict(self.account, username="admin01", role="admin")
+        current = admin_auth.issue_token(
+            self.secret,
+            "admin01",
+            "admin-session",
+            3600,
+            claims={"ver": 1},
+        )
+        legacy = admin_auth.issue_token(
+            self.secret, "admin01", "admin-session", 3600
+        )
+        with (
+            patch.object(admin_api, "_load_admin_token", return_value=self.secret),
+            patch.object(
+                admin_api.db, "get_user_by_username", return_value=admin_account
+            ),
+        ):
+            self.assertTrue(admin_api._valid_admin_session(current))
+            self.assertFalse(admin_api._valid_admin_session(legacy))
+        with (
+            patch.object(admin_api, "_load_admin_token", return_value=self.secret),
+            patch.object(
+                admin_api.db,
+                "get_user_by_username",
+                return_value=dict(admin_account, session_version=2),
+            ),
+        ):
+            self.assertFalse(admin_api._valid_admin_session(current))
 
     def test_signed_session_resolves_only_active_matching_account(self) -> None:
         token = user_session.issue_session(self.secret, "student01", 3600)
@@ -174,9 +206,15 @@ class UserSessionTests(unittest.TestCase):
 
     def test_logout_requires_ticket_and_expires_cookie(self) -> None:
         ticket = user_session.issue_logout_ticket(self.secret, "student01")
+        session = user_session.issue_session(self.secret, "student01", 3600)
         with patch.object(admin_api, "_load_admin_token", return_value=self.secret):
             response = admin_api.user_logout_session(
-                request_for("/session-logout"), ticket=ticket, mode="light"
+                request_for(
+                    "/session-logout",
+                    cookie=f"{user_session.USER_SESSION_COOKIE}={session}",
+                ),
+                ticket=ticket,
+                mode="light",
             )
         self.assertEqual(response.headers["location"], "/agent/?mode=light")
         set_cookie = response.headers["set-cookie"]
@@ -184,6 +222,23 @@ class UserSessionTests(unittest.TestCase):
         self.assertIn("Secure", set_cookie)
         self.assertIn("HttpOnly", set_cookie)
         self.assertIn("Path=/agent", set_cookie)
+
+    def test_logout_ticket_cannot_clear_a_different_users_cookie(self) -> None:
+        ticket = user_session.issue_logout_ticket(self.secret, "student01")
+        other_session = user_session.issue_session(self.secret, "student02", 3600)
+        with (
+            patch.object(admin_api, "_load_admin_token", return_value=self.secret),
+            self.assertRaises(HTTPException) as blocked,
+        ):
+            admin_api.user_logout_session(
+                request_for(
+                    "/session-logout",
+                    cookie=f"{user_session.USER_SESSION_COOKIE}={other_session}",
+                ),
+                ticket=ticket,
+                mode="system",
+            )
+        self.assertEqual(blocked.exception.status_code, 401)
 
     def test_admin_logout_expires_both_sessions_and_returns_to_login(self) -> None:
         response = admin_api.admin_logout(

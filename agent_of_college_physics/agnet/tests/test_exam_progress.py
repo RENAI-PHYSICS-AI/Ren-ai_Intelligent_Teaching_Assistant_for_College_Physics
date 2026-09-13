@@ -123,7 +123,7 @@ def test_exam_ui_creates_progress_before_retrieval_and_names_all_five_steps() ->
     assert "正在等待专用命题模型空闲" in request_block
     assert "前一份完成后本任务会自动开始" in request_block
     assert "命题模型排队耗时" in request_block
-    assert "generation_lock.release()" in request_block
+    assert "generation_lease.release()" in request_block
     assert "isinstance(exc, ExamGenerationError)" in request_block
     assert "结构化试卷未通过校验或超过时限" in request_block
     assert "progress_callback=(" in request_block
@@ -189,8 +189,10 @@ def test_all_teacher_exam_requests_share_the_single_deepseek_queue() -> None:
 
     assert "uses_dedicated_exam_model = agent_mode == PORTAL_TEACHING_EXAM" in request_block
     assert "if uses_dedicated_exam_model:" in tracked_block
-    assert "generation_lock = exam_generation_lock()" in tracked_block
-    assert "generation_lock.acquire(timeout=1.0)" in tracked_block
+    assert "generation_lease = exam_generation_queue().acquire(" in tracked_block
+    assert "on_wait=update_queue_wait" in tracked_block
+    assert "PHYSICS_MODEL_QUEUE_MAX_WAITERS" in source
+    assert "PHYSICS_MODEL_QUEUE_TIMEOUT_SECONDS" in tracked_block
     assert "正在等待教研模型空闲" in tracked_block
-    assert "generation_lock.release()" in request_block
-    assert "if is_full_exam_generation:\n                    generation_lock" not in tracked_block
+    assert "generation_lease.release()" in request_block
+    assert "generation_lock" not in tracked_block

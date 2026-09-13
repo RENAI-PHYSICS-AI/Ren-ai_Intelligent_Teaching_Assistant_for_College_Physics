@@ -3,7 +3,6 @@ from __future__ import annotations
 import html
 import random
 import re
-import threading
 import time
 import traceback
 import uuid
@@ -38,9 +37,14 @@ from exam_artifacts import (
 )
 from experiment_hub import render_experiment_hub
 from llm import ExamGenerationError, plan_visualization, stream_answer, visualization_requested
+from model_queue import FairSingleSlotQueue
 from proxy_paths import with_public_prefix
 from rag import KnowledgeBase, context_text
 from storage import (
+    LoginRateLimited,
+    UPLOAD_MAX_COUNT,
+    UPLOAD_MAX_ITEM_BYTES,
+    UPLOAD_MAX_TOTAL_BYTES,
     authenticate,
     clear_messages,
     create_user,
@@ -364,10 +368,23 @@ def load_private_teacher_exam_kb(private_stamp: float):
     return KnowledgeBase(TEACHER_EXAM_KB_FILE)
 
 
+def _bounded_queue_setting(name: str, default: int, minimum: int, maximum: int) -> int:
+    try:
+        value = int(setting(name, str(default)))
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(value, maximum))
+
+
 @st.cache_resource(show_spinner=False)
-def exam_generation_lock():
-    """Match the dedicated DeepSeek service's single generation slot."""
-    return threading.Lock()
+def exam_generation_queue():
+    """Match the dedicated DeepSeek service with a fair, bounded waiting room."""
+    return FairSingleSlotQueue(
+        max_waiters=_bounded_queue_setting(
+            "PHYSICS_MODEL_QUEUE_MAX_WAITERS", 16, 1, 128
+        ),
+        poll_interval=1.0,
+    )
 
 
 @st.cache_resource(show_spinner=False)
@@ -394,6 +411,8 @@ if "username" not in st.session_state:
     st.session_state.username = "匿名用户"
 if "user_role" not in st.session_state:
     st.session_state.user_role = "anonymous"
+if "session_version" not in st.session_state:
+    st.session_state.session_version = None
 if "access_granted" not in st.session_state:
     st.session_state.access_granted = False
 if "quick_questions" not in st.session_state:
@@ -440,16 +459,54 @@ def refresh_account_state() -> dict:
         st.session_state.user_role = "anonymous"
         return {}
     account = analytics_db.get_user_by_id(st.session_state.user_id)
-    if not account or not account.get("is_active"):
+    current_version = int(account.get("session_version", 1)) if account else None
+    stored_version = st.session_state.get("session_version")
+    stale_session = (
+        stored_version is not None
+        and current_version is not None
+        and int(stored_version) != current_version
+    )
+    if not account or not account.get("is_active") or stale_session:
         st.session_state.user_id = None
         st.session_state.username = "匿名用户"
         st.session_state.user_role = "anonymous"
+        st.session_state.session_version = None
         st.session_state.messages = []
         reset_history_view()
         st.session_state.access_granted = False
         st.session_state.pop("teacher_portal", None)
         return {}
     st.session_state.user_role = account.get("role", "student")
+    st.session_state.session_version = current_version
+    return account
+
+
+class AccountAuthorizationChanged(RuntimeError):
+    """Raised when a long-running request loses its authenticated authority."""
+
+
+def require_current_session(*, teacher: bool = False) -> dict:
+    """Re-check revocable account state at long-running request boundaries."""
+    user_id = st.session_state.get("user_id")
+    expected_version = st.session_state.get("session_version")
+    account = analytics_db.get_user_by_id(user_id) if user_id is not None else None
+    try:
+        version_matches = (
+            account is not None
+            and expected_version is not None
+            and int(account.get("session_version", 1)) == int(expected_version)
+        )
+    except (TypeError, ValueError):
+        version_matches = False
+    if (
+        not account
+        or not account.get("is_active")
+        or not version_matches
+        or (teacher and not is_verified_teacher(account))
+    ):
+        raise AccountAuthorizationChanged(
+            "账号权限已在请求期间发生变化，本次处理已安全取消，请重新登录。"
+        )
     return account
 
 
@@ -544,6 +601,7 @@ def restore_persistent_login() -> bool:
     st.session_state.user_id = int(account["id"])
     st.session_state.username = str(account["username"])
     st.session_state.user_role = str(account.get("role") or "student")
+    st.session_state.session_version = int(account.get("session_version", 1))
     st.session_state.access_granted = True
     return True
 
@@ -592,8 +650,13 @@ def admin_login_target() -> str:
         setting("PHYSICS_PUBLIC_BASE_URL", ""),
         setting("PHYSICS_GATEWAY_PUBLIC_PREFIX", ""),
     )
+    account = analytics_db.get_user_by_id(st.session_state.user_id) or {}
     ticket = admin_auth.issue_token(
-        admin_token, st.session_state.username, "admin-login", 60
+        admin_token,
+        st.session_state.username,
+        "admin-login",
+        60,
+        claims={"ver": int(account.get("session_version", 1))},
     )
     separator = "&" if "?" in admin_login_url else "?"
     return f"{admin_login_url}{separator}ticket={ticket}"
@@ -794,6 +857,38 @@ def render_quoted_reference(message: dict) -> None:
     st.caption(f"↪ 已引用{label}{detail}")
 
 
+def persist_message_with_fallback(
+    user_id: int,
+    message: dict,
+    *,
+    agent_mode: str,
+) -> int | None:
+    """Keep text/link history when quota rejects heavyweight attachments."""
+    try:
+        return save_message(user_id, message, agent_mode=agent_mode)
+    except ValueError as exc:
+        has_heavy_payload = any(
+            message.get(field) for field in ("images", "visualizations", "artifacts")
+        )
+        if has_heavy_payload:
+            reduced = dict(message)
+            reduced["images"] = []
+            reduced["visualizations"] = []
+            reduced["artifacts"] = []
+            try:
+                message_id = save_message(user_id, reduced, agent_mode=agent_mode)
+            except ValueError:
+                message_id = None
+            else:
+                message["images"] = []
+                message["visualizations"] = []
+                message["artifacts"] = []
+                st.warning(f"附件或生成文件未写入历史记录：{exc}")
+                return message_id
+        st.warning(f"本条消息未写入历史记录：{exc}")
+        return None
+
+
 def save_session_history(user_id: int, agent_mode: str = PORTAL_ASSISTANT) -> None:
     """Persist an anonymous in-memory history while preserving turn links."""
     latest_user_message_id: int | None = None
@@ -806,16 +901,20 @@ def save_session_history(user_id: int, agent_mode: str = PORTAL_ASSISTANT) -> No
                 existing_message["quoted_message_id"] = saved_reference_ids[
                     quoted_session_key
                 ]
-            existing_message["id"] = save_message(
+            message_id = persist_message_with_fallback(
                 user_id, existing_message, agent_mode=agent_mode
             )
-            latest_user_message_id = int(existing_message["id"])
+            if message_id is not None:
+                existing_message["id"] = message_id
+                latest_user_message_id = int(message_id)
             continue
         existing_message["parent_message_id"] = latest_user_message_id
-        existing_message["id"] = save_message(
+        message_id = persist_message_with_fallback(
             user_id, existing_message, agent_mode=agent_mode
         )
-        saved_reference_ids[original_key] = int(existing_message["id"])
+        if message_id is not None:
+            existing_message["id"] = message_id
+            saved_reference_ids[original_key] = int(message_id)
 
 
 def clear_history_render_state() -> None:
@@ -1339,6 +1438,20 @@ def render_history_delete(message: dict, message_index: int) -> None:
 def mark_answer_in_progress() -> None:
     st.session_state._answer_in_progress = True
 
+
+def login_client_key() -> str:
+    """Use the gateway's canonical client address without storing it in logs."""
+    try:
+        forwarded = str(st.context.headers.get("X-Forwarded-For", "")).split(",", 1)[0].strip()
+        if forwarded:
+            return forwarded[:128]
+        direct = str(getattr(st.context, "ip_address", "") or "").strip()
+        if direct:
+            return direct[:128]
+    except (AttributeError, RuntimeError):
+        pass
+    return "unknown"
+
 restore_persistent_login()
 
 if not st.session_state.access_granted:
@@ -1366,11 +1479,20 @@ if not st.session_state.access_granted:
                     "登录", use_container_width=True
                 )
             if landing_login_submit:
-                user_id, canonical_username = authenticate(
-                    landing_username, landing_password
-                )
+                landing_rate_limited = False
+                try:
+                    user_id, canonical_username = authenticate(
+                        landing_username,
+                        landing_password,
+                        login_client_key(),
+                    )
+                except LoginRateLimited as exc:
+                    st.error(str(exc))
+                    landing_rate_limited = True
+                    user_id, canonical_username = None, None
                 if user_id is None:
-                    st.error("用户名、学号/工号或密码错误。")
+                    if not landing_rate_limited:
+                        st.error("用户名、学号/工号或密码错误。")
                 else:
                     st.session_state.user_id = user_id
                     st.session_state.username = canonical_username
@@ -1399,7 +1521,9 @@ if not st.session_state.access_granted:
                     st.error("两次输入的密码不一致。")
                 else:
                     user_id, register_message = create_user(
-                        landing_register_username, landing_register_password
+                        landing_register_username,
+                        landing_register_password,
+                        login_client_key(),
                     )
                     if user_id is None:
                         st.error(register_message)
@@ -1586,6 +1710,10 @@ with st.sidebar:
             st.session_state.visual_experiment_name = "固体热传导系数测定"
             st.session_state.visual_experiment_category = "热学实验"
             st.rerun()
+        if st.button("γ 气体γ常数测定", key="sidebar_gas_gamma", use_container_width=True):
+            st.session_state.visual_experiment_name = "气体γ常数测定"
+            st.session_state.visual_experiment_category = "热学实验"
+            st.rerun()
 
         st.markdown("**振动波动**")
         if st.button("∿ 声速测量", key="sidebar_sound_speed", use_container_width=True):
@@ -1632,6 +1760,18 @@ with st.sidebar:
             st.session_state.visual_experiment_name = "三棱镜折射率测定"
             st.session_state.visual_experiment_category = "光学实验"
             st.rerun()
+        if st.button("▤ 光栅干涉", key="sidebar_grating_interference", use_container_width=True):
+            st.session_state.visual_experiment_name = "光栅干涉"
+            st.session_state.visual_experiment_category = "光学实验"
+            st.rerun()
+        if st.button("◐ 光的偏振研究", key="sidebar_light_polarization", use_container_width=True):
+            st.session_state.visual_experiment_name = "光的偏振研究"
+            st.session_state.visual_experiment_category = "光学实验"
+            st.rerun()
+        if st.button("◉ 迈克尔逊干涉仪测波长", key="sidebar_michelson_wavelength", use_container_width=True):
+            st.session_state.visual_experiment_name = "迈克尔逊干涉仪测波长"
+            st.session_state.visual_experiment_category = "光学实验"
+            st.rerun()
 
         st.markdown("**近代物理实验**")
         if st.button("☀ 光电效应", key="sidebar_photoelectric", use_container_width=True):
@@ -1656,9 +1796,20 @@ with st.sidebar:
                     login_password = st.text_input("密码", type="password", key="login_password")
                     login_submit = st.form_submit_button("登录", use_container_width=True)
                 if login_submit:
-                    user_id, canonical_username = authenticate(login_username, login_password)
+                    sidebar_rate_limited = False
+                    try:
+                        user_id, canonical_username = authenticate(
+                            login_username,
+                            login_password,
+                            login_client_key(),
+                        )
+                    except LoginRateLimited as exc:
+                        st.error(str(exc))
+                        sidebar_rate_limited = True
+                        user_id, canonical_username = None, None
                     if user_id is None:
-                        st.error("用户名、学号/工号或密码错误。")
+                        if not sidebar_rate_limited:
+                            st.error("用户名、学号/工号或密码错误。")
                     else:
                         st.session_state.user_id = user_id
                         st.session_state.username = canonical_username
@@ -1678,7 +1829,9 @@ with st.sidebar:
                     if register_password != register_confirm:
                         st.error("两次输入的密码不一致。")
                     else:
-                        user_id, register_message = create_user(register_username, register_password)
+                        user_id, register_message = create_user(
+                            register_username, register_password, login_client_key()
+                        )
                         if user_id is None:
                             st.error(register_message)
                         else:
@@ -1718,12 +1871,21 @@ with st.sidebar:
                     use_container_width=True,
                 )
             elif not account.get("identity_verified"):
-                with st.expander("绑定学生/教师身份", expanded=False):
+                allow_teacher_claim = str(
+                    setting("PHYSICS_ALLOW_TEACHER_SELF_CLAIM", "0")
+                ).strip().lower() in {"1", "true", "yes", "on"}
+                identity_binding_title = (
+                    "绑定学生/教师身份" if allow_teacher_claim else "绑定学生身份"
+                )
+                with st.expander(identity_binding_title, expanded=False):
                     identity_label = st.selectbox(
-                        "身份", ["学生", "教师"], key="identity_type"
+                        "身份",
+                        ["学生", "教师"] if allow_teacher_claim else ["学生"],
+                        key="identity_type",
                     )
                     institutional_id = st.text_input(
-                        "学号或工号", key="institutional_id"
+                        "学号或工号" if allow_teacher_claim else "学号",
+                        key="institutional_id",
                     )
                     real_name = st.text_input("姓名", key="identity_real_name")
                     if st.button("核验并绑定", key="bind_identity", use_container_width=True):
@@ -1733,12 +1895,20 @@ with st.sidebar:
                                 "student" if identity_label == "学生" else "teacher",
                                 institutional_id,
                                 real_name,
+                                allow_teacher_claim=allow_teacher_claim,
                             )
                             st.session_state.user_role = verified.get("role", "student")
-                            st.success("身份绑定成功。")
+                            if verified.get("teacher_approval_status") == "pending":
+                                st.info("教师信息已匹配名册，正在等待管理员审批。")
+                            else:
+                                st.success("身份绑定成功。")
                             st.rerun()
                         except ValueError as exc:
                             st.error(str(exc))
+            elif account.get("teacher_approval_status") == "pending":
+                st.info("教师身份已提交，管理员批准后将开放教师工作入口。")
+            elif account.get("teacher_approval_status") == "rejected":
+                st.warning("教师身份申请未获批准；如信息有误，请联系管理员复核。")
             if st.button("退出登录", key="logout", use_container_width=True):
                 logout_target = user_session_target(
                     "logout", str(st.session_state.username)
@@ -1938,12 +2108,34 @@ uploaded_images = []
 typed_question = ""
 if typed_input:
     typed_question = typed_input.text.strip()
-    for uploaded in typed_input.files:
+    uploaded_files = list(typed_input.files)
+    upload_error = ""
+    if len(uploaded_files) > UPLOAD_MAX_COUNT:
+        upload_error = f"一次最多上传 {UPLOAD_MAX_COUNT} 个附件。"
+    elif (
+        sum(max(0, int(getattr(item, "size", 0) or 0)) for item in uploaded_files)
+        > UPLOAD_MAX_TOTAL_BYTES
+    ):
+        upload_error = "附件总大小不能超过 40 MB。"
+    total_upload_bytes = 0
+    for uploaded in uploaded_files if not upload_error else []:
+        payload = uploaded.getvalue()
+        if len(payload) > UPLOAD_MAX_ITEM_BYTES:
+            upload_error = f"附件“{uploaded.name}”超过 20 MB 限制。"
+            break
+        total_upload_bytes += len(payload)
+        if total_upload_bytes > UPLOAD_MAX_TOTAL_BYTES:
+            upload_error = "附件总大小不能超过 40 MB。"
+            break
         uploaded_images.append({
-            "data": uploaded.getvalue(),
+            "data": payload,
             "mime": uploaded.type or "image/png",
             "name": uploaded.name,
         })
+    if upload_error:
+        st.session_state._answer_in_progress = False
+        st.error(upload_error)
+        st.stop()
 if uploaded_images and not typed_question:
     typed_question = (
         "请读取上传附件中的试题、答案或教学资料，并依据知识库进行审题、改题或命题分析。"
@@ -2016,9 +2208,11 @@ if question:
     }
     st.session_state.messages.append(user_message)
     if st.session_state.user_id is not None:
-        user_message["id"] = save_message(
+        message_id = persist_message_with_fallback(
             st.session_state.user_id, user_message, agent_mode=agent_mode
         )
+        if message_id is not None:
+            user_message["id"] = message_id
     with st.chat_message("user"):
         render_quoted_reference(user_message)
         render_history_images(user_message)
@@ -2058,11 +2252,13 @@ if question:
         }
         st.session_state.messages.append(assistant_message)
         if st.session_state.user_id is not None:
-            assistant_message["id"] = save_message(
+            message_id = persist_message_with_fallback(
                 st.session_state.user_id,
                 assistant_message,
                 agent_mode=agent_mode,
             )
+            if message_id is not None:
+                assistant_message["id"] = message_id
         st.session_state.analytics_total_questions += 1
         st.session_state.analytics_tokens_input += max(1, len(question) // 4)
         st.session_state.analytics_tokens_output += max(1, len(exam_metadata_prompt) // 4)
@@ -2152,6 +2348,8 @@ if question:
                 compile_error,
                 compile_traceback,
                 st.session_state.user_id,
+                interaction_id=interaction_id,
+                agent_mode=agent_mode,
             )
             st.session_state.analytics_total_errors += 1
         assistant_message = {
@@ -2164,11 +2362,13 @@ if question:
         }
         st.session_state.messages.append(assistant_message)
         if st.session_state.user_id is not None:
-            assistant_message["id"] = save_message(
+            message_id = persist_message_with_fallback(
                 st.session_state.user_id,
                 assistant_message,
                 agent_mode=agent_mode,
             )
+            if message_id is not None:
+                assistant_message["id"] = message_id
         st.session_state.analytics_total_questions += 1
         st.session_state.analytics_tokens_input += max(1, len(question) // 4)
         st.session_state.analytics_tokens_output += max(1, len(response) // 4)
@@ -2201,6 +2401,7 @@ if question:
         )
     search_started = time.monotonic()
     if agent_mode == PORTAL_TEACHING_EXAM:
+        require_current_session(teacher=True)
         scoped_exam_task = exam_retrieval_task(
             question, st.session_state.messages[:-1]
         )
@@ -2574,20 +2775,20 @@ if question:
 
         def tracked_stream():
             nonlocal_first = {"value": True}
-            generation_lock = None
-            generation_lock_acquired = False
+            generation_lease = None
             queue_started = time.monotonic()
             try:
                 if uses_dedicated_exam_model:
-                    generation_lock = exam_generation_lock()
                     queue_notice_written = False
-                    while not generation_lock.acquire(timeout=1.0):
-                        waited = time.monotonic() - queue_started
+
+                    def update_queue_wait(waited: float, position: int) -> None:
+                        nonlocal queue_notice_written
+                        require_current_session(teacher=True)
                         if is_full_exam_generation and exam_progress_status is not None:
                             exam_progress_status.update(
                                 label=(
                                     "步骤 3/5：正在等待专用命题模型空闲"
-                                    f"（已等待 {waited:.0f} 秒）"
+                                    f"（队列第 {position} 位，已等待 {waited:.0f} 秒）"
                                 ),
                                 state="running",
                                 expanded=True,
@@ -2602,14 +2803,26 @@ if question:
                             thinking.markdown(
                                 """
                                 <div class="thinking-state"><span class="thinking-orb"></span>
-                                <span>正在等待教研模型空闲（已等待 """
-                                + f"{waited:.0f}"
+                                <span>正在等待教研模型空闲（队列第 """
+                                + f"{position} 位，已等待 {waited:.0f}"
                                 + """ 秒）<span class="thinking-dots"><span>·</span><span>·</span><span>·</span></span></span></div>
                                 """,
                                 unsafe_allow_html=True,
                             )
-                    generation_lock_acquired = True
+
+                    generation_lease = exam_generation_queue().acquire(
+                        timeout=float(
+                            _bounded_queue_setting(
+                                "PHYSICS_MODEL_QUEUE_TIMEOUT_SECONDS",
+                                900,
+                                30,
+                                3600,
+                            )
+                        ),
+                        on_wait=update_queue_wait,
+                    )
                     request_timing["命题模型排队耗时"] = time.monotonic() - queue_started
+                    require_current_session(teacher=True)
                     if is_full_exam_generation and exam_progress_status is not None:
                         exam_progress_status.update(
                             label="步骤 3/5：正在生成结构化试题、参考答案与评分标准",
@@ -2621,6 +2834,7 @@ if question:
                         <div class="thinking-state"><span class="thinking-orb"></span>
                         <span>正在组织答案<span class="thinking-dots"><span>·</span><span>·</span><span>·</span></span></span></div>
                         """, unsafe_allow_html=True)
+                last_authorization_check = time.monotonic()
                 for piece in stream_answer(
                     question,
                     context,
@@ -2640,6 +2854,13 @@ if question:
                     ),
                     generate_exam_artifacts=is_full_exam_generation,
                 ):
+                    now = time.monotonic()
+                    if (
+                        agent_mode == PORTAL_TEACHING_EXAM
+                        and now - last_authorization_check >= 2.0
+                    ):
+                        require_current_session(teacher=True)
+                        last_authorization_check = now
                     if nonlocal_first["value"]:
                         if not is_full_exam_generation:
                             thinking.empty()
@@ -2648,8 +2869,8 @@ if question:
                     streamed_parts.append(piece)
                     yield piece
             finally:
-                if generation_lock_acquired and generation_lock is not None:
-                    generation_lock.release()
+                if generation_lease is not None:
+                    generation_lease.release()
 
         try:
             last_render_at = 0.0
@@ -2764,7 +2985,13 @@ if question:
             request_error = str(exc)
             request_traceback = traceback.format_exc()
             thinking.empty()
-            if is_full_exam_generation:
+            if isinstance(exc, AccountAuthorizationChanged):
+                artifacts = []
+                visualizations = []
+                streamed_parts.clear()
+                response = str(exc)
+                answer_placeholder.markdown(response)
+            elif is_full_exam_generation:
                 artifacts = []
                 artifact_status = "model_request_failed"
                 response = (
@@ -2790,10 +3017,21 @@ if question:
                 visualizations = apply_requested_media_format(visualizations, question)
                 answer_placeholder.markdown(response)
                 render_visualizations(visualizations)
-            if isinstance(exc, ExamGenerationError):
+            if isinstance(exc, (ExamGenerationError, AccountAuthorizationChanged)):
                 st.error(str(exc))
             else:
                 st.error(f"模型服务调用失败：{exc}")
+    if agent_mode == PORTAL_TEACHING_EXAM:
+        try:
+            require_current_session(teacher=True)
+        except AccountAuthorizationChanged as exc:
+            artifacts = []
+            visualizations = []
+            streamed_parts.clear()
+            response = str(exc)
+            request_error = str(exc)
+            request_traceback = "request authority revoked before persistence"
+            answer_placeholder.markdown(response)
     detected_chapter = results[0][0].chapter if results else "未分类"
     approximate_input_tokens = max(
         1,
@@ -2831,6 +3069,8 @@ if question:
             request_error,
             request_traceback,
             st.session_state.user_id,
+            interaction_id=interaction_id,
+            agent_mode=agent_mode,
         )
         st.session_state.analytics_total_errors += 1
     st.session_state.analytics_total_questions += 1
@@ -2846,10 +3086,12 @@ if question:
     }
     st.session_state.messages.append(assistant_message)
     if st.session_state.user_id is not None:
-        assistant_message["id"] = save_message(
+        message_id = persist_message_with_fallback(
             st.session_state.user_id,
             assistant_message,
             agent_mode=agent_mode,
         )
+        if message_id is not None:
+            assistant_message["id"] = message_id
     st.session_state._answer_in_progress = False
     st.rerun()

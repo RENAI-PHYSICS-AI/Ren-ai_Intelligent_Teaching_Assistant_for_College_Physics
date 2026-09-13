@@ -1,0 +1,12 @@
+{
+  "topic": "光的偏振研究",
+  "routes": [
+    "malus",
+    "brewster",
+    "waveplate",
+    "fit"
+  ],
+  "core_reference_count": 10,
+  "local_pdf_count": 3,
+  "method": "起偏-检偏、马吕斯定律、布儒斯特角与波片相位延迟"
+}

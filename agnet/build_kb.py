@@ -77,6 +77,10 @@ IMPORTED_COLLECTIONS = {
     "thin_lens_focal": ("薄透镜焦距的测定实验", "光学实验·几何光学"),
     "prism_refractive_index": ("三棱镜折射率测定实验", "光学实验·几何光学"),
     "thermal_conductivity": ("固体热传导系数测定实验", "第5章 热力学基础"),
+    "gas_gamma": ("气体γ常数测定实验", "第5章 热力学基础"),
+    "grating_interference": ("光栅干涉实验", "第11章 波动光学"),
+    "light_polarization": ("光的偏振研究实验", "第11章 波动光学"),
+    "michelson_wavelength": ("迈克尔逊干涉仪测波长实验", "第11章 波动光学"),
 }
 LEGACY_CHAPTER_MAP = {
     "第1章 质点运动、时间和空间": "第1章 质点运动、时间、空间",
@@ -377,7 +381,7 @@ def record_parts(records: list[dict], path: Path, parts: list[tuple[int, str, st
             continue
         chapter = forced_chapter or classify(path.stem + "\n" + text)
         for part_no, chunk in enumerate(split_chunks(text), 1):
-            records.append({"id": f"{abs(hash(relative))}-{number}-{part_no}", "source": path.name,
+            records.append({"id": _stable_record_id("chunk", relative, number, part_no), "source": path.name,
                             "source_type": source_type, "page": number, "chapter": chapter, "text": chunk,
                             "relative_path": relative, "locator": locator, "priority": priority})
             added += 1
@@ -387,6 +391,13 @@ def record_parts(records: list[dict], path: Path, parts: list[tuple[int, str, st
 def _text_fingerprint(text: str) -> str:
     normalized = re.sub(r"\s+", "", text).lower()
     return hashlib.sha1(normalized.encode("utf-8", errors="ignore")).hexdigest()
+
+
+def _stable_record_id(kind: str, relative: str, number: int, part_number: int) -> str:
+    """Return a process-independent identifier for one source location."""
+    payload = "\0".join((kind, relative, str(number), str(part_number)))
+    digest = hashlib.sha256(payload.encode("utf-8", errors="strict")).hexdigest()
+    return f"{kind}-{digest[:24]}"
 
 
 def is_teacher_private_material(path: Path) -> bool:
@@ -571,7 +582,7 @@ def build() -> dict:
             if not added:
                 # Every file still becomes discoverable, including videos and image-only documents.
                 relative = path.relative_to(MATERIALS_DIR).as_posix()
-                records.append({"id": f"catalog-{abs(hash(relative))}", "source": path.name,
+                records.append({"id": _stable_record_id("catalog", relative, 0, 0), "source": path.name,
                                 "source_type": "资源目录索引", "page": 0,
                                 "chapter": classify(path.stem),
                                 "text": f"教学资源文件：{path.name}\n相对路径：{relative}\n文件类型：{ext or '无扩展名'}。该文件未提取到可检索正文，可按文件名定位原始资源。",

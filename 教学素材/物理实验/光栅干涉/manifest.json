@@ -1,0 +1,12 @@
+{
+  "topic": "光栅干涉",
+  "routes": [
+    "principle",
+    "spectrum",
+    "wavelength",
+    "resolution"
+  ],
+  "core_reference_count": 10,
+  "local_pdf_count": 1,
+  "method": "夫琅禾费多缝干涉、光栅方程与分光计测角"
+}

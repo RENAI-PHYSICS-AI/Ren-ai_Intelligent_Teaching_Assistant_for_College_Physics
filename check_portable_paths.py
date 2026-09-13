@@ -11,27 +11,53 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 
 ROOT = Path(__file__).resolve().parent
 DRIVE_PATH = re.compile(r"(?i)(?<![A-Za-z])[A-Z]:[\\/]")
+TEST_FIXTURE_MARKER = "portable-path-test-fixture"
+TEST_FIXTURE_COMMENT = re.compile(
+    rf"(?:^|\s)(?:#|//)\s*{re.escape(TEST_FIXTURE_MARKER)}\s*$"
+)
 TEXT_SUFFIXES = {
     "",
     ".bat",
+    ".cjs",
+    ".cmd",
     ".conf",
+    ".css",
+    ".env",
     ".example",
     ".gitignore",
     ".gitattributes",
+    ".htm",
+    ".html",
     ".in",
+    ".ini",
     ".jl",
+    ".js",
+    ".jsx",
     ".json",
+    ".jsonl",
+    ".less",
     ".lock",
     ".md",
+    ".mjs",
     ".ps1",
     ".py",
+    ".scss",
     ".service",
     ".sh",
+    ".svg",
+    ".tex",
     ".toml",
+    ".ts",
+    ".tsx",
+    ".txt",
+    ".vue",
+    ".xml",
+    ".yaml",
+    ".yml",
 }
 SKIP_PARTS = {
     ".git", ".venv", ".runtime", ".codex-tmp", ".tmp",
-    "__pycache__", "教学素材", "tmp",
+    "__pycache__", "教学素材", "考试素材", "tmp",
 }
 
 
@@ -40,6 +66,8 @@ def project_text_files():
         if not path.is_file() or any(part in SKIP_PARTS for part in path.parts):
             continue
         relative = path.relative_to(ROOT).as_posix()
+        if "/knowledge_base/private/" in f"/{relative}":
+            continue
         if relative.endswith("knowledge_base/chunks.jsonl"):
             continue
         if "/knowledge_base/imports/" in f"/{relative}" and path.suffix == ".jsonl":
@@ -56,6 +84,20 @@ def safe_relative(value: str) -> bool:
     return ".." not in PurePosixPath(value).parts
 
 
+def is_marked_test_fixture(path: Path, text: str, offset: int) -> bool:
+    try:
+        relative = path.relative_to(ROOT)
+    except ValueError:
+        return False
+    if "tests" not in relative.parts:
+        return False
+    line_start = text.rfind("\n", 0, offset) + 1
+    line_end = text.find("\n", offset)
+    if line_end < 0:
+        line_end = len(text)
+    return TEST_FIXTURE_COMMENT.search(text[line_start:line_end]) is not None
+
+
 def audit_source_text(errors: list[str]) -> None:
     for path in project_text_files():
         try:
@@ -63,8 +105,15 @@ def audit_source_text(errors: list[str]) -> None:
         except OSError as exc:
             errors.append(f"无法读取 {path.relative_to(ROOT)}：{exc}")
             continue
-        match = DRIVE_PATH.search(text)
-        if match:
+        match = next(
+            (
+                candidate
+                for candidate in DRIVE_PATH.finditer(text)
+                if not is_marked_test_fixture(path, text, candidate.start())
+            ),
+            None,
+        )
+        if match is not None:
             line = text.count("\n", 0, match.start()) + 1
             errors.append(f"硬编码盘符：{path.relative_to(ROOT)}:{line}")
 

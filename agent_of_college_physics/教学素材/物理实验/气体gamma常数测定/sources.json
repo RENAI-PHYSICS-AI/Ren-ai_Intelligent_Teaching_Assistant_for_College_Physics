@@ -1,0 +1,133 @@
+[
+  {
+    "id": "gas_gamma-01",
+    "authors": [
+      "Clément",
+      "Desormes"
+    ],
+    "year": 1819,
+    "title": "Mémoire sur la chaleur spécifique des gaz",
+    "publisher": "Annales de Chimie et de Physique",
+    "type": "核心题录",
+    "topic": "经典原始工作",
+    "url": "https://gallica.bnf.fr/",
+    "local_file": null
+  },
+  {
+    "id": "gas_gamma-02",
+    "authors": [
+      "J. C. Carpenter"
+    ],
+    "year": 1935,
+    "title": "Determination of the Ratio of Specific Heats of a Gas by Method of Clement and Desormes",
+    "publisher": "Field and Laboratory",
+    "type": "核心题录",
+    "topic": "经典实验方法",
+    "url": "https://scholar.smu.edu/fieldandlab/vol3/iss2/6/",
+    "local_file": null
+  },
+  {
+    "id": "gas_gamma-03",
+    "authors": [
+      "University of Zurich"
+    ],
+    "year": 2017,
+    "title": "Ratio of Specific Heats",
+    "publisher": "UZH Physics",
+    "type": "开放全文",
+    "topic": "实验装置与状态过程",
+    "url": "https://www.physik.uzh.ch/~matthias/espace-assistant/manuals/en/anleitung-cd_e.pdf",
+    "local_file": "ref/UZH_Clement_Desormes.pdf"
+  },
+  {
+    "id": "gas_gamma-04",
+    "authors": [
+      "Gdańsk University of Technology"
+    ],
+    "year": 2021,
+    "title": "Determination of the Ratio of the Specific Heats of Air",
+    "publisher": "GUT",
+    "type": "核心题录",
+    "topic": "公式推导与测量步骤",
+    "url": "https://pg.edu.pl/files/ftims/2021-03/SKRYPT08.pdf",
+    "local_file": null
+  },
+  {
+    "id": "gas_gamma-05",
+    "authors": [
+      "Tallinn University of Technology"
+    ],
+    "year": 2021,
+    "title": "Specific Heat Capacity Ratio for Gases",
+    "publisher": "TalTech",
+    "type": "核心题录",
+    "topic": "液柱读数与实验问题",
+    "url": "https://haldus.taltech.ee/sites/default/files/2021-04/Experiment_19.pdf",
+    "local_file": null
+  },
+  {
+    "id": "gas_gamma-06",
+    "authors": [
+      "University of Jordan"
+    ],
+    "year": 2025,
+    "title": "Thermodynamics Lab Manual: Ratio of Specific Heats of Air",
+    "publisher": "University of Jordan",
+    "type": "核心题录",
+    "topic": "工程热力学实验",
+    "url": "https://engineering.ju.edu.jo/Laboratories/Thermodynamics%20Lab%20Manual.pdf",
+    "local_file": null
+  },
+  {
+    "id": "gas_gamma-07",
+    "authors": [
+      "Jeremy Tatum"
+    ],
+    "year": 2020,
+    "title": "The Clément-Desormes Experiment",
+    "publisher": "Physics LibreTexts",
+    "type": "核心题录",
+    "topic": "热力学状态推导",
+    "url": "https://phys.libretexts.org/Bookshelves/Thermodynamics_and_Statistical_Mechanics/Heat_and_Thermodynamics_(Tatum)/08%3A_Heat_Capacity_and_the_Expansion_of_Gases/8.05%3A_The_Clement-Desormes_Experiment",
+    "local_file": null
+  },
+  {
+    "id": "gas_gamma-08",
+    "authors": [
+      "H. Rüchardt"
+    ],
+    "year": 1929,
+    "title": "Eine einfache Methode zur Bestimmung von Cp/Cv",
+    "publisher": "Physikalische Zeitschrift",
+    "type": "核心题录",
+    "topic": "替代振动法",
+    "url": "https://ui.adsabs.harvard.edu/abs/1929PhyZ...30...58R",
+    "local_file": null
+  },
+  {
+    "id": "gas_gamma-09",
+    "authors": [
+      "JCGM"
+    ],
+    "year": 2008,
+    "title": "Evaluation of Measurement Data - Guide to the Expression of Uncertainty in Measurement",
+    "publisher": "BIPM",
+    "type": "核心题录",
+    "topic": "不确定度评定",
+    "url": "https://doi.org/10.59161/JCGM100-2008E",
+    "local_file": null
+  },
+  {
+    "id": "gas_gamma-10",
+    "authors": [
+      "NIST"
+    ],
+    "year": 2023,
+    "title": "NIST Chemistry WebBook: Thermophysical Properties of Fluid Systems",
+    "publisher": "NIST",
+    "type": "核心题录",
+    "topic": "气体热容参考数据",
+    "url": "https://webbook.nist.gov/chemistry/fluid/",
+    "local_file": null
+  }
+]

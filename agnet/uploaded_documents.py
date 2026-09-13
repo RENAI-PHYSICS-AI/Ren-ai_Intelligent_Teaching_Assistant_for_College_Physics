@@ -4,12 +4,16 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from typing import Final, Iterable, Mapping
 
 from pypdf import PdfReader
+from PIL import Image, UnidentifiedImageError
+
+from config import setting
 
 
 MAX_UPLOAD_BYTES: Final = 20 * 1024**2
@@ -17,7 +21,15 @@ MAX_PDF_PAGES: Final = 12
 MAX_PDF_TEXT_CHARS: Final = 120_000
 MAX_RENDERED_PAGES: Final = 8
 MAX_RENDERED_BYTES: Final = 18 * 1024**2
-PDF_PASSWORDS: Final = ("", "410410", "505505")
+MAX_BUNDLE_PDF_PAGES: Final = 24
+MAX_BUNDLE_TEXT_CHARS: Final = 200_000
+MAX_BUNDLE_RENDERED_PAGES: Final = 12
+MAX_BUNDLE_RENDERED_BYTES: Final = 24 * 1024**2
+MAX_BUNDLE_PROCESS_SECONDS: Final = 120.0
+MAX_PDF_PAGE_DIMENSION_POINTS: Final = 14_400
+MAX_PDF_PAGE_AREA_POINTS: Final = 25_000_000
+MAX_RASTER_IMAGE_PIXELS: Final = 16_000_000
+MAX_RASTER_TOTAL_PIXELS: Final = 32_000_000
 
 
 @dataclass(frozen=True)
@@ -53,15 +65,43 @@ def is_pdf_attachment(item: Mapping[str, object]) -> bool:
 
 def is_raster_image_attachment(item: Mapping[str, object]) -> bool:
     payload = _payload(item)
-    return bool(
+    has_signature = bool(
         payload.startswith(b"\x89PNG\r\n\x1a\n")
         or payload.startswith(b"\xff\xd8\xff")
         or (len(payload) >= 12 and payload[:4] == b"RIFF" and payload[8:12] == b"WEBP")
     )
+    if not has_signature:
+        return False
+    try:
+        with Image.open(BytesIO(payload)) as image:
+            width, height = image.size
+            return (
+                image.format in {"PNG", "JPEG", "WEBP"}
+                and width > 0
+                and height > 0
+                and width * height <= MAX_RASTER_IMAGE_PIXELS
+            )
+    except (OSError, ValueError, UnidentifiedImageError):
+        return False
 
 
 def raster_image_attachments(items: Iterable[Mapping[str, object]]) -> list[dict]:
-    return [dict(item) for item in items if is_raster_image_attachment(item)]
+    accepted: list[dict] = []
+    total_pixels = 0
+    for item in items:
+        if not is_raster_image_attachment(item):
+            continue
+        payload = _payload(item)
+        try:
+            with Image.open(BytesIO(payload)) as image:
+                pixels = int(image.width) * int(image.height)
+        except (OSError, ValueError, UnidentifiedImageError):
+            continue
+        if total_pixels + pixels > MAX_RASTER_TOTAL_PIXELS:
+            continue
+        total_pixels += pixels
+        accepted.append(dict(item))
+    return accepted
 
 
 def _normalized_page_text(value: object) -> str:
@@ -70,12 +110,29 @@ def _normalized_page_text(value: object) -> str:
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
-def _extract_pdf_pages(payload: bytes) -> tuple[list[str], str, int]:
+def configured_pdf_passwords() -> tuple[str, ...]:
+    """Read PDF passwords from local secrets without embedding them in source."""
+    result: list[str] = []
+    for name in ("PHYSICS_PDF_PASSWORDS", "PHYSICS_EXAM_SOURCE_PASSWORDS"):
+        for value in re.split(r"[,，;；\r\n]+", setting(name, "")):
+            value = value.strip()
+            if value and value not in result:
+                result.append(value)
+    return tuple(result)
+
+
+def _extract_pdf_pages(
+    payload: bytes,
+    *,
+    page_limit: int = MAX_PDF_PAGES,
+    text_limit: int = MAX_PDF_TEXT_CHARS,
+) -> tuple[list[str], str, int]:
     reader = PdfReader(BytesIO(payload), strict=False)
     password_used = ""
     if reader.is_encrypted:
         unlocked = False
-        for password in PDF_PASSWORDS:
+        passwords = configured_pdf_passwords()
+        for password in ("", *passwords):
             try:
                 if reader.decrypt(password):
                     password_used = password
@@ -84,15 +141,32 @@ def _extract_pdf_pages(payload: bytes) -> tuple[list[str], str, int]:
             except Exception:
                 continue
         if not unlocked:
-            raise ValueError("PDF 已加密，410410 与 505505 均无法解密")
+            detail = "未配置解密口令" if not passwords else "本地配置的口令无法解锁"
+            raise ValueError(f"PDF 已加密，{detail}")
 
     page_count = len(reader.pages)
     page_texts: list[str] = []
-    remaining = MAX_PDF_TEXT_CHARS
-    for page_index in range(min(page_count, MAX_PDF_PAGES)):
+    remaining = max(0, min(int(text_limit), MAX_PDF_TEXT_CHARS))
+    safe_page_limit = max(0, min(int(page_limit), MAX_PDF_PAGES))
+    for page_index in range(min(page_count, safe_page_limit)):
         if remaining <= 0:
             break
         page = reader.pages[page_index]
+        media_box = getattr(page, "mediabox", None)
+        if media_box is not None:
+            try:
+                width = abs(float(media_box.width))
+                height = abs(float(media_box.height))
+            except (TypeError, ValueError):
+                raise ValueError(f"PDF 第 {page_index + 1} 页尺寸无效") from None
+            if (
+                width <= 0
+                or height <= 0
+                or width > MAX_PDF_PAGE_DIMENSION_POINTS
+                or height > MAX_PDF_PAGE_DIMENSION_POINTS
+                or width * height > MAX_PDF_PAGE_AREA_POINTS
+            ):
+                raise ValueError(f"PDF 第 {page_index + 1} 页尺寸异常，已拒绝处理")
         try:
             text = _normalized_page_text(page.extract_text())
         except Exception:
@@ -108,6 +182,8 @@ def _render_pdf_pages(
     *,
     password: str = "",
     page_count: int = MAX_RENDERED_PAGES,
+    byte_limit: int = MAX_RENDERED_BYTES,
+    timeout_seconds: float = 90.0,
 ) -> list[dict]:
     executable = shutil.which("pdftoppm")
     if not executable or page_count <= 0:
@@ -123,6 +199,7 @@ def _render_pdf_pages(
             "-f", "1",
             "-l", str(safe_page_count),
             "-r", "110",
+            "-scale-to", "2400",
             "-png",
         ]
         if password:
@@ -132,7 +209,7 @@ def _render_pdf_pages(
             command,
             capture_output=True,
             check=False,
-            timeout=90,
+            timeout=max(1.0, min(float(timeout_seconds), 90.0)),
         )
         if completed.returncode != 0:
             return []
@@ -143,7 +220,7 @@ def _render_pdf_pages(
             if not data.startswith(b"\x89PNG\r\n\x1a\n"):
                 continue
             total_bytes += len(data)
-            if total_bytes > MAX_RENDERED_BYTES:
+            if total_bytes > max(0, min(int(byte_limit), MAX_RENDERED_BYTES)):
                 break
             images.append({
                 "data": data,
@@ -160,6 +237,11 @@ def prepare_uploaded_documents(
     vision_images: list[dict] = []
     warnings: list[str] = []
     pdf_names: list[str] = []
+    remaining_pages = MAX_BUNDLE_PDF_PAGES
+    remaining_text = MAX_BUNDLE_TEXT_CHARS
+    remaining_rendered_pages = MAX_BUNDLE_RENDERED_PAGES
+    remaining_rendered_bytes = MAX_BUNDLE_RENDERED_BYTES
+    deadline = time.monotonic() + MAX_BUNDLE_PROCESS_SECONDS
 
     for attachment in attachments:
         if not is_pdf_attachment(attachment):
@@ -167,13 +249,25 @@ def prepare_uploaded_documents(
         payload = _payload(attachment)
         name = str(attachment.get("name") or "uploaded.pdf").strip()[:160] or "uploaded.pdf"
         pdf_names.append(name)
+        if time.monotonic() >= deadline:
+            warnings.append("附件处理已达到总时限，其余 PDF 未解析")
+            break
+        if remaining_pages <= 0 or remaining_text <= 0:
+            warnings.append(f"{name}：本轮 PDF 总页数或文本预算已用完")
+            continue
         try:
-            page_texts, password, page_count = _extract_pdf_pages(payload)
+            page_texts, password, page_count = _extract_pdf_pages(
+                payload,
+                page_limit=min(remaining_pages, MAX_PDF_PAGES),
+                text_limit=min(remaining_text, MAX_PDF_TEXT_CHARS),
+            )
         except Exception as exc:
             warnings.append(f"{name}：{exc}")
             continue
+        remaining_pages -= len(page_texts)
+        remaining_text -= sum(len(text) for text in page_texts)
 
-        visible_pages = min(page_count, MAX_PDF_PAGES)
+        visible_pages = len(page_texts)
         extracted = []
         for page_number, text in enumerate(page_texts, 1):
             if text:
@@ -190,16 +284,26 @@ def prepare_uploaded_documents(
             warnings.append(f"{name}：未提取到可用文字，已尝试用页面图进行识别")
 
         try:
+            render_count = min(
+                page_count,
+                visible_pages,
+                remaining_rendered_pages,
+                MAX_RENDERED_PAGES,
+            )
             rendered = _render_pdf_pages(
                 payload,
                 name,
                 password=password,
-                page_count=min(page_count, MAX_RENDERED_PAGES),
-            )
+                page_count=render_count,
+                byte_limit=remaining_rendered_bytes,
+                timeout_seconds=max(1.0, deadline - time.monotonic()),
+            ) if render_count > 0 and remaining_rendered_bytes > 0 else []
         except (OSError, subprocess.SubprocessError, ValueError):
             rendered = []
             warnings.append(f"{name}：页面图渲染失败")
         vision_images.extend(rendered)
+        remaining_rendered_pages -= len(rendered)
+        remaining_rendered_bytes -= sum(len(image.get("data", b"")) for image in rendered)
         if not extracted and not rendered:
             warnings.append(f"{name}：既未提取到文字，也无法渲染页面图")
 

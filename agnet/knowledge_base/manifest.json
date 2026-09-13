@@ -1,5 +1,5 @@
 {
-  "chunks": 58065,
+  "chunks": 58493,
   "files_scanned": 668,
   "failures": [],
   "by_type": {
@@ -79,7 +79,19 @@
     "imported_thermal_conductivity_invalid": 0,
     "imported_thin_lens_focal_chunks": 634,
     "imported_thin_lens_focal_duplicates": 155,
-    "imported_thin_lens_focal_invalid": 0
+    "imported_thin_lens_focal_invalid": 0,
+    "imported_gas_gamma_chunks": 62,
+    "imported_gas_gamma_duplicates": 0,
+    "imported_gas_gamma_invalid": 0,
+    "imported_grating_interference_chunks": 22,
+    "imported_grating_interference_duplicates": 0,
+    "imported_grating_interference_invalid": 0,
+    "imported_light_polarization_chunks": 236,
+    "imported_light_polarization_duplicates": 0,
+    "imported_light_polarization_invalid": 0,
+    "imported_michelson_wavelength_chunks": 108,
+    "imported_michelson_wavelength_duplicates": 1,
+    "imported_michelson_wavelength_invalid": 0
   },
   "primary_textbook": "教学素材/教材/物理学  第5版 -- 祝之光 -- 2018 -- 北京_高等教育出版社.pdf",
   "primary_solution": "教学素材/教材/物理学（第五版）祝之光习题解答.pdf",
@@ -108,9 +120,30 @@
       "invalid_skipped": 0
     },
     {
+      "collection": "气体γ常数测定实验",
+      "file": "gas_gamma.jsonl",
+      "chunks": 62,
+      "duplicates_skipped": 0,
+      "invalid_skipped": 0
+    },
+    {
+      "collection": "光栅干涉实验",
+      "file": "grating_interference.jsonl",
+      "chunks": 22,
+      "duplicates_skipped": 0,
+      "invalid_skipped": 0
+    },
+    {
       "collection": "霍尔效应测磁场分布实验",
       "file": "hall_effect.jsonl",
       "chunks": 694,
+      "duplicates_skipped": 0,
+      "invalid_skipped": 0
+    },
+    {
+      "collection": "光的偏振研究实验",
+      "file": "light_polarization.jsonl",
+      "chunks": 236,
       "duplicates_skipped": 0,
       "invalid_skipped": 0
     },
@@ -126,6 +159,13 @@
       "file": "magnetic_hysteresis.jsonl",
       "chunks": 284,
       "duplicates_skipped": 243,
+      "invalid_skipped": 0
+    },
+    {
+      "collection": "迈克尔逊干涉仪测波长实验",
+      "file": "michelson_wavelength.jsonl",
+      "chunks": 108,
+      "duplicates_skipped": 1,
       "invalid_skipped": 0
     },
     {

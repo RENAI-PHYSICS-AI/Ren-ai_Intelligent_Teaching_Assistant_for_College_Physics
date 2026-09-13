@@ -245,6 +245,19 @@ class YoungModulusIntegrationTests(unittest.TestCase):
         self.assertIn("settings.readyEvent", embed)
         self.assertIn("settings.failedEvent", embed)
 
+    def test_late_failure_restores_hidden_loading_overlay(self):
+        embed = experiment_hub._EMBED_HTML
+        show_error = re.search(
+            r"const showError = message => \{(?P<body>.*?)\n  \};",
+            embed,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(show_error)
+        self.assertIn("loading.classList.remove('hidden')", show_error.group("body"))
+        self.assertIn("loading.setAttribute('role', 'alert')", show_error.group("body"))
+        self.assertIn("aria-live=\"polite\"", embed)
+        self.assertIn("prefers-reduced-motion:reduce", embed)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,6 +1,6 @@
 # Rocky Linux 10 用户目录版
 
-本目录是一套与 Windows 版独立的、可直接复制的 Rocky Linux 10 版本，包含应用、整理后的教学资料、RAG 知识库和十八套可视化实验。用户、管理员、历史、数据库备份和签名密钥属于本机运行数据，可通过受控流程迁移，但不进入 Git。
+本目录是一套与 Windows 版独立的、可直接复制的 Rocky Linux 10 版本，包含应用、整理后的教学资料、RAG 知识库和二十二套可视化实验。用户、管理员、历史、数据库备份和签名密钥属于本机运行数据，可通过受控流程迁移，但不进入 Git。
 
 回答以本地教材和 RAG 知识库为核心；遇到明确联网请求或时效性问题时，应用按需调用 Tavily 检索网络资料，再由本地模型统一组织答案。教材课程口径与网络资料不一致时以教材为准。
 
@@ -13,10 +13,10 @@
 当前目录约 `1.77 GiB`，包含：
 
 - 原始教学素材 702 个文件；
-- RAG 主知识库 58,065 个文本块，其中基础教学素材 35,967 个；最新专题有效导入包括薄透镜焦距 634 个、三棱镜折射率 202 个、固体热传导系数 1,059 个文本块；
+- RAG 主知识库 58,493 个文本块，其中基础教学素材 35,967 个；新增专题有效导入包括气体 γ 常数 62 个、光栅干涉 22 个、光的偏振 236 个、迈克尔逊测波长 108 个文本块；
 - 注册用户与匿名会话都支持逐条确认删除完整问答；只有问题而没有回答的孤立条目也可单独删除，注册用户的删除会同步写入数据库；
 - 本机运行时可保存用户、管理员、对话、反馈、学情、身份名册、数据库备份和管理员签名密钥，这些内容均由 Git 忽略；
-- 李萨如图形、声速测量、电子荷质比、光电效应、双棱镜干涉、牛顿环、杨氏模量、转动惯量、粘滞系数、固体比热容、弗兰克-赫兹、温度传感器、惠斯通电桥、霍尔效应、铁磁滞回线、薄透镜焦距、三棱镜折射率与固体热传导系数；十八类实验均包含四个按需加载的独立页面。
+- 李萨如图形、声速测量、电子荷质比、光电效应、双棱镜干涉、牛顿环、杨氏模量、转动惯量、粘滞系数、固体比热容、弗兰克-赫兹、温度传感器、惠斯通电桥、霍尔效应、铁磁滞回线、薄透镜焦距、三棱镜折射率、固体热传导系数、气体 γ 常数、光栅干涉、光的偏振与迈克尔逊干涉仪测波长；二十二类实验均包含四个按需加载的独立页面。
 - Paraformer 中文流式语音输入服务及固定版本模型下载器。
 
 `.streamlit/secrets.toml` 和 API Key 不会明文迁移。主应用模型连接写在安装后生成的 `config/physics-assistant.env` 中；MiMo 与 DeepSeek API 的独立密钥分别只写入当前用户的 `mimo-vl-avx2.env` 和 `deepseek-avx512.env`。
@@ -55,27 +55,34 @@
 
 ## 环境要求
 
-- Rocky Linux 10，`x86_64` 或 `aarch64`；
+- Rocky Linux 10，`x86_64`（固定校验的 Tectonic 发布包为该架构）；
 - 普通 SSH 用户，不需要 sudo 权限；
 - 至少 8 GB 内存，Julia 首次预编译建议 12 GB；
 - 用户目录至少预留 8 GB 空间；
 - 系统已有 `curl`、`tar`、`gzip`、`sha256sum`、`awk`；启用项目 HTTPS 时还需要 `openssl`；
 - 安装阶段能访问 uv、Python 包源、Julia 官方下载站、GitHub 的 Noto CJK 字体源和 Hugging Face 模型仓库；
+- 教研考试使用的固定版本 Tectonic 会由安装器下载、校验、预热，并通过离线安全编译自检；
 - 已确认现有 LM Studio AVX2 `llama-server` 二进制支持 `--mmproj`、`--no-mmap` 与本项目所列参数；生产运行不依赖 `lms load`。
 
 系统缺少基础命令时，安装器只报告缺项，不会自行调用 dnf 或修改系统。
 
 ## 复制与安装
 
-在 Windows 项目根目录执行：
+在完整源码仓库根目录先提交并审核待发布改动，并确认 Git LFS 已把发布目录中的
+大文件完整拉取。随后用仓库脚本按 Git 跟踪文件白名单生成部署包；脚本会拒绝未
+水合的 LFS pointer，也不会包含 `assistant.db`、`config/physics-assistant.env`、
+`.runtime`、私有题库、ignored 文件或密钥：
 
 ```powershell
-scp -r ".\agent_of_college_physics" 用户名@Rocky服务器IP:~/
+git lfs pull --include="agent_of_college_physics/**"
+.\agnet\.venv\Scripts\python.exe .\tools\package_rocky_release.py --output .\rocky-physics-assistant.tar.gz
+scp .\rocky-physics-assistant.tar.gz 用户名@Rocky服务器IP:~/
 ```
 
 登录 Rocky 后，以普通用户执行：
 
 ```bash
+tar -xzf ~/rocky-physics-assistant.tar.gz -C ~
 cd ~/agent_of_college_physics
 bash install.sh
 ```
@@ -98,7 +105,7 @@ config/physics-assistant.env  # 权限 0600 的运行配置
 
 安装器还会下载 Sherpa-ONNX 成品模型 `encoder.int8.onnx`、`decoder.int8.onnx` 和 `tokens.txt`，逐个校验固定大小及 SHA-256 后原子替换。只传输并保存约 226.5 MiB 的 INT8 文件，不下载或保留约 1 GiB 的 FP32 完整归档。下载中断会从已有分块继续。
 
-已有管理员已随数据库迁移，不会再次询问密码。只有数据库确实没有管理员时才交互创建。
+新部署无需预置 `assistant.db`；安装器会先初始化空库，再交互创建管理员。已有管理员随受控数据库迁移保留时不会再次询问密码。不要复制正在写入的数据库或其 WAL 文件，应使用 SQLite 在线备份后再迁移。
 
 管理员页面支持身份名册批量导入，以及未绑定记录的逐条修改和删除；已绑定账号的记录不能直接删除或修改，避免破坏身份关联。
 
@@ -123,17 +130,17 @@ bash manage.sh logs
 
 服务由 `nohup` 在后台运行，日志位于 `.runtime/logs/`。本版本不会注册系统开机服务；服务器重启后进入目录执行 `bash manage.sh start` 即可。
 
-`bash manage.sh status` 默认显示 `admin`、`asr`、`web`、`gateway` 四项运行中；配置 HTTPS 后还会显示 `gateway_https`。`bash manage.sh check` 会验证 ASR、统一入口，以及所有已按需启动实验的直接回环地址与 8501 代理路径。语音详细日志为 `.runtime/logs/asr.log`，HTTPS 网关日志为 `.runtime/logs/gateway_https.log`。`8604`、`9384`–`9401` 等内部端口固定只绑定 `127.0.0.1`，不得加入防火墙放行列表。
+`bash manage.sh status` 默认显示 `admin`、`asr`、`web`、`gateway` 四项运行中；配置 HTTPS 后还会显示 `gateway_https`。`bash manage.sh check` 会验证 ASR、统一入口，以及所有已按需启动实验的直接回环地址与 8501 代理路径。语音详细日志为 `.runtime/logs/asr.log`，HTTPS 网关日志为 `.runtime/logs/gateway_https.log`。`8604`、`9384`–`9405` 等内部端口固定只绑定 `127.0.0.1`，不得加入防火墙放行列表。
 
 ## 可视化实验
 
-十八套 Julia/WGLMakie 实验分别使用 `9384`–`9401` 回环端口，均由主站按需启动。学生浏览器只访问统一入口，不直连实验内部端口；首次进入可视化模式默认加载“力学实验 → 杨氏模量”：
+二十二套 Julia/WGLMakie 实验分别使用 `9384`–`9405` 回环端口，均由主站按需启动。学生浏览器只访问统一入口，不直连实验内部端口；首次进入可视化模式默认加载“力学实验 → 杨氏模量”：
 
 力学实验分组包含杨氏模量、转动惯量和粘滞系数测定。
 
-热学实验分组包含固体比热容的测定、温度传感器特性的测定和固体热传导系数测定。
+热学实验分组包含固体比热容的测定、温度传感器特性的测定、固体热传导系数测定和气体 γ 常数测定。
 
-光学实验分组包含牛顿环、双棱镜干涉测波长、薄透镜焦距的测定和三棱镜折射率测定。
+光学实验分组包含牛顿环、双棱镜干涉测波长、薄透镜焦距的测定、三棱镜折射率测定、光栅干涉、光的偏振研究和迈克尔逊干涉仪测波长。
 
 电磁实验分组包含电子荷质比、惠斯通电桥测电阻、霍尔效应测磁场分布和铁磁滞回线测定与观察。
 
@@ -157,8 +164,12 @@ bash manage.sh logs
 - 薄透镜焦距的测定：物距—像距法、自准直法、贝塞尔位移法、拟合与不确定度。
 - 三棱镜折射率测定：分光计调节、棱镜顶角测量、最小偏向角法、色散与不确定度。
 - 固体热传导系数测定：稳态导热与温度梯度、冷却散热修正、多工况拟合与不确定度。
+- 气体 γ 常数测定：绝热膨胀与等容升温、压强差读数、γ 值计算及不确定度。
+- 光栅干涉：多缝干涉、衍射角与光谱、未知波长测量和分辨本领。
+- 光的偏振研究：马吕斯定律、布儒斯特角、波片与椭圆偏振、偏振度拟合。
+- 迈克尔逊干涉仪测波长：光路调节、移镜计数、波长线性拟合和回程差。
 
-十八类实验均只构建和加载当前选中的页面。李萨如子页面为 `/phase`、`/amplitude`、`/ratio`、`/detune`；声速子页面为 `/echo`、`/dual`、`/phase`、`/standing`。
+二十二类实验均只构建和加载当前选中的页面。李萨如子页面为 `/phase`、`/amplitude`、`/ratio`、`/detune`；声速子页面为 `/echo`、`/dual`、`/phase`、`/standing`。
 
 电子荷质比的公开基路径为 `/experiments/electron-em`，四个子页面分别是 `/circular`、`/helmholtz`、`/focus` 和 `/thomson`。它们共用一个只监听 `127.0.0.1:9386` 的内部服务，但分别构建和加载页面，避免打开一项实验时初始化其他三项。
 
@@ -178,7 +189,7 @@ bash manage.sh logs
 
 弗兰克-赫兹实验的公开基路径为 `/experiments/franck-hertz`，四个子页面分别是 `/apparatus`、`/curve`、`/analysis` 和 `/uncertainty`。它们共用一个只监听 `127.0.0.1:9394` 的内部服务，分别演示实验装置与能级跃迁、周期性峰谷曲线、激发电势分析、拟合与不确定度。健康端点 `/__physics_health__` 必须返回 `physics-experiment:franck-hertz`；`manage.sh check` 同时核验 9394 直连与 8501 代理结果。
 
-最新三项依次使用 `9399`–`9401`：薄透镜 `/direct`、`/autocollimation`、`/displacement`、`/uncertainty`；三棱镜 `/collimation`、`/apex`、`/minimum-deviation`、`/dispersion`；固体热传导 `/steady-state`、`/cooling`、`/fit`、`/uncertainty`。`manage.sh check` 同时核验三项的直连和代理健康标识。
+薄透镜、三棱镜和固体热传导依次使用 `9399`–`9401`。新增的气体 γ 常数、光栅干涉、光的偏振和迈克尔逊干涉依次使用 `9402`–`9405`，公开基路径分别为 `/experiments/gas-gamma`、`/experiments/grating-interference`、`/experiments/light-polarization` 和 `/experiments/michelson-wavelength`。`manage.sh check` 会核验全部实验的直连和代理健康标识。
 
 ## 模型配置
 
@@ -221,6 +232,7 @@ ADMIN_LOGIN_URL=/admin-login
 USER_SESSION_LOGIN_URL=/session-login
 USER_SESSION_LOGOUT_URL=/session-logout
 PHYSICS_USER_SESSION_SECONDS=604800
+PHYSICS_ALLOW_TEACHER_SELF_CLAIM=0
 PHYSICS_PUBLIC_BASE_URL=https://192.168.222.147:1234/agent
 PHYSICS_ASR_PORT=8604
 PHYSICS_ASR_THREADS=4
@@ -300,6 +312,36 @@ bash agnet/install_deepseek_avx512_service.sh
 注册用户登录后由 `/session-login` 换取服务器签名的 HttpOnly Cookie；完成名册身份核验后，可使用原用户名或学号/工号登录，两种方式均解析为同一个账号。刷新页面会重新核验数据库中的账号状态并恢复登录，默认有效期为 7 天。HTTPS 入口会为 Cookie 自动增加 `Secure` 属性，退出登录通过 `/session-logout` 清除 Cookie；`PHYSICS_USER_SESSION_SECONDS` 可在 1 小时至 30 天范围内调整。
 
 已通过名册核验的教师登录后先选择“智能助教”或“教研考试”。教研考试复用全部公共知识库，并可叠加 `教学素材/教师专用/教研考试/` 构建出的私有命题索引，用于组卷、专项出题、参考答案和评分标准；两个入口的历史记录按智能体隔离。新增教师资料后执行 `./agnet/.venv/bin/python ./agnet/build_teacher_exam_kb.py`，再重启服务即可刷新教师私有索引；教师资料和生成索引不会提交到 Git。
+
+### 教师账号发放
+
+教师自助认领默认关闭，即 `PHYSICS_ALLOW_TEACHER_SELF_CLAIM=0`。推荐由管理员先在后台导入或录入教师名册，再在部署目录的受控终端交互式预配置所有尚未绑定的教师账号；账号以工号为用户名，创建后已完成教师身份绑定和审批：
+
+```bash
+cd ~/agent_of_college_physics
+./agnet/.venv/bin/python ./agnet/provision_teacher_accounts.py
+```
+
+脚本会隐藏输入并要求二次确认初始密码，然后为本批未绑定教师设置该初始密码；各账号仍使用独立随机盐保存密码摘要。初始密码不得写进命令行、文档或日志，应通过校内受控渠道发放。
+
+不要仅因已导入教师名册就开启自助认领。只有可信学校 SSO 或一次性邀请已经接入，并能在服务端验证身份和邀请有效性时，才可将 `PHYSICS_ALLOW_TEACHER_SELF_CLAIM` 设为 `1`。开启后，名册匹配的教师也只会提交待审批申请，管理员批准前不会获得教师角色或教研考试入口。修改该配置后执行 `bash manage.sh restart`。
+
+### 注册与消息存储配额
+
+以下是当前固定安全上限，不是可由环境变量放宽的运行参数。注册配额按网关确认的客户端地址哈希计数；消息容量按写入数据库的序列化内容计量：
+
+| 范围 | 当前上限 |
+| --- | --- |
+| 同一客户端注册尝试 | 10 分钟内 3 次、24 小时内 8 次 |
+| 全站注册尝试 | 10 分钟内 100 次、24 小时内 500 次 |
+| 单账号消息条目 | 每日 500 条；其中含上传附件或生成文件的消息每日 30 条 |
+| 单账号消息存储 | 每日新增 128 MiB、累计保留 512 MiB |
+| 单条消息 | 正文 512 KiB、序列化可视化数据 2 MiB |
+| 单次上传 | 最多 6 个附件，单个 20 MiB、合计 40 MiB |
+| 单条消息的考试产物 | 最多 8 个，单个 8 MiB、合计 16 MiB |
+| 全站消息存储 | 每日新增 2 GiB、累计计量 8 GiB；写入时至少保留 512 MiB 磁盘余量 |
+
+达到任一上限时，本次注册或消息保存会被拒绝并显示可操作的错误提示；匿名会话不写入服务器历史数据库。
 
 生成整套试卷前，系统必须取得学年、学期和考试名称；缺失时先提示教师补充，考试日期可以留空且不得自动猜测。只有教师明确指定补考时大标题才包含“补考”。大学物理1与大学物理A的试题、答案和评分点均排除相对论内容。大题编号按单选“一”、填空“二”、五道计算题“三”至“七”连续排列；每道计算题有独立主题标题和“共10分”，五题主题顺序可按蓝图调整。试卷严格生成三张物理页，每页采用框外页眉、独立2pt黑色外框和双栏题面，并按标准模板显式换栏、分页和保留计算题答题空间；结构化蓝图在编译前拒绝超长题干或超栏文本预算，避免 TeX 拆页卡死。题图优先使用安全 TikZ；引用可信模板图件时，服务器同时提供含 TeX、PDF 与图件的完整 ZIP。
 

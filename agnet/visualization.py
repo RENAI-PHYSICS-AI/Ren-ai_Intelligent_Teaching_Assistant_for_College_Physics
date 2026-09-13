@@ -41,6 +41,12 @@ _ALLOWED_NODES = (
     ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Pow, ast.Mod, ast.UAdd, ast.USub,
     ast.Call,
 )
+_MAX_EXPRESSION_NODES = 80
+_MAX_EXPRESSION_DEPTH = 16
+_MAX_EXPRESSION_OPERATIONS = 32
+_MAX_INTEGER_DIGITS = 16
+_MAX_ABS_FLOAT_CONSTANT = 1e100
+_MAX_POWER_EXPONENT = 12
 
 
 def _cjk_font_path() -> Path | None:
@@ -131,21 +137,85 @@ def apply_requested_media_format(specs: list[dict], question: str) -> list[dict]
     return specs
 
 
+def _literal_number(node: ast.AST) -> int | float | None:
+    """Return a signed numeric literal without evaluating an AST subtree."""
+    sign = 1
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+        sign = -1 if isinstance(node.op, ast.USub) else 1
+        node = node.operand
+    if not isinstance(node, ast.Constant) or isinstance(node.value, bool):
+        return None
+    if not isinstance(node.value, (int, float)):
+        return None
+    return sign * node.value
+
+
+def _validate_expression_tree(tree: ast.Expression, variable: str) -> None:
+    node_count = 0
+    operation_count = 0
+
+    def visit(node: ast.AST, depth: int, inside_power: bool = False) -> None:
+        nonlocal node_count, operation_count
+        node_count += 1
+        if node_count > _MAX_EXPRESSION_NODES:
+            raise ValueError("表达式节点过多")
+        if depth > _MAX_EXPRESSION_DEPTH:
+            raise ValueError("表达式嵌套过深")
+        if not isinstance(node, _ALLOWED_NODES):
+            raise ValueError("表达式包含不允许的语法")
+
+        if isinstance(node, (ast.BinOp, ast.UnaryOp, ast.Call)):
+            operation_count += 1
+            if operation_count > _MAX_EXPRESSION_OPERATIONS:
+                raise ValueError("表达式运算过多")
+
+        if isinstance(node, ast.Name) and node.id not in {*_FUNCTIONS, *_CONSTANTS, variable}:
+            raise ValueError(f"不允许的名称：{node.id}")
+        if isinstance(node, ast.Constant):
+            value = node.value
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError("仅允许有限数值常量")
+            if isinstance(value, int) and len(str(abs(value))) > _MAX_INTEGER_DIGITS:
+                raise ValueError("整数常量超出安全范围")
+            if isinstance(value, float) and (
+                not math.isfinite(value) or abs(value) > _MAX_ABS_FLOAT_CONSTANT
+            ):
+                raise ValueError("数值常量超出安全范围")
+        if isinstance(node, ast.Call):
+            if (
+                not isinstance(node.func, ast.Name)
+                or node.func.id not in _FUNCTIONS
+                or len(node.args) != 1
+                or node.keywords
+            ):
+                raise ValueError("仅允许单参数数学函数")
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Pow):
+            if inside_power:
+                raise ValueError("不允许嵌套幂运算")
+            if any(
+                isinstance(descendant, ast.BinOp) and isinstance(descendant.op, ast.Pow)
+                for child in (node.left, node.right)
+                for descendant in ast.walk(child)
+            ):
+                raise ValueError("不允许嵌套幂运算")
+            exponent = _literal_number(node.right)
+            if exponent is None or abs(exponent) > _MAX_POWER_EXPONENT:
+                raise ValueError("指数必须是安全范围内的数值常量")
+
+        child_inside_power = inside_power or (
+            isinstance(node, ast.BinOp) and isinstance(node.op, ast.Pow)
+        )
+        for child in ast.iter_child_nodes(node):
+            visit(child, depth + 1, child_inside_power)
+
+    visit(tree, 1)
+
+
 def _compile_expression(expression: str, variable: str):
     if not isinstance(expression, str) or len(expression) > 200:
         raise ValueError("表达式过长或格式无效")
     tree = ast.parse(expression.replace("^", "**"), mode="eval")
-    for node in ast.walk(tree):
-        if not isinstance(node, _ALLOWED_NODES):
-            raise ValueError("表达式包含不允许的语法")
-        if isinstance(node, ast.Name) and node.id not in {*_FUNCTIONS, *_CONSTANTS, variable}:
-            raise ValueError(f"不允许的名称：{node.id}")
-        if isinstance(node, ast.Call):
-            if not isinstance(node.func, ast.Name) or node.func.id not in _FUNCTIONS or len(node.args) != 1:
-                raise ValueError("仅允许单参数数学函数")
-        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Pow):
-            if isinstance(node.right, ast.Constant) and abs(float(node.right.value)) > 12:
-                raise ValueError("指数超出安全范围")
+    _validate_expression_tree(tree, variable)
     return compile(tree, "<physics-visualization>", "eval")
 
 

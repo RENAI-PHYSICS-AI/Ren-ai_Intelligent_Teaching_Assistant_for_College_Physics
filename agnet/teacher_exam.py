@@ -466,6 +466,8 @@ def is_verified_teacher(account: Mapping[str, object] | None) -> bool:
         and bool(str(account.get("institutional_id") or "").strip())
         and _enabled(account.get("identity_verified"))
         and _enabled(account.get("is_active"))
+        and str(account.get("teacher_approval_status") or "").strip().lower()
+        == "approved"
     )
 
 

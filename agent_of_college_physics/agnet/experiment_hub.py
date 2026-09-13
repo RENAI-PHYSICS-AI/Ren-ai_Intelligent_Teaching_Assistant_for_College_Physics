@@ -22,37 +22,6 @@ from config import APP_DIR
 
 EXPERIMENT_ROOT = APP_DIR / "experiments"
 RUNTIME_DIR = APP_DIR / "runtime" / "experiments"
-EXPERIMENT_GROUPS: dict[str, tuple[str, ...]] = {
-    "力学实验": ("杨氏模量", "转动惯量", "粘滞系数测定"),
-    "热学实验": (
-        "固体比热容的测定",
-        "温度传感器特性的测定",
-        "固体热传导系数测定",
-    ),
-    "振动波动": ("声速测量", "李萨如图形"),
-    "电磁实验": (
-        "电子荷质比",
-        "惠斯通电桥测电阻",
-        "霍尔效应测磁场分布",
-        "铁磁滞回线测定与观察",
-    ),
-    "光学实验": (
-        "牛顿环",
-        "双棱镜干涉",
-        "薄透镜焦距的测定",
-        "三棱镜折射率测定",
-    ),
-    "近代物理实验": ("光电效应", "弗兰克-赫兹"),
-}
-EXPERIMENT_DISPLAY_NAMES = {
-    "双棱镜干涉": "双棱镜干涉测波长",
-}
-EXPERIMENT_CATEGORY_BY_NAME = {
-    experiment_name: category
-    for category, experiment_names in EXPERIMENT_GROUPS.items()
-    for experiment_name in experiment_names
-}
-DEFAULT_EXPERIMENT = EXPERIMENT_GROUPS["力学实验"][0]
 
 
 def normalize_experiment_selection(
@@ -394,29 +363,75 @@ THERMAL_CONDUCTIVITY = ExperimentService(
     height=740,
 )
 
-SERVICES = {
-    service.key: service
-    for service in (
-        LISSAJOUS,
-        SOUND_SPEED,
-        ELECTRON_EM,
-        PHOTOELECTRIC,
-        BIPRISM,
-        NEWTON_RINGS,
-        YOUNG_MODULUS,
-        ROTATIONAL_INERTIA,
-        VISCOSITY,
-        SPECIFIC_HEAT,
-        FRANCK_HERTZ,
-        TEMPERATURE_SENSOR,
-        WHEATSTONE_BRIDGE,
-        HALL_EFFECT,
-        MAGNETIC_HYSTERESIS,
-        THIN_LENS_FOCAL,
-        PRISM_REFRACTIVE_INDEX,
-        THERMAL_CONDUCTIVITY,
+GAS_GAMMA = ExperimentService("gas_gamma", "气体 γ 常数测定实验", EXPERIMENT_ROOT / "gas_gamma", EXPERIMENT_ROOT / "gas_gamma" / "web.jl", "PHYSICS_GAS_GAMMA_PORT", 9402, "GAS_GAMMA_WEB_HOST", "GAS_GAMMA_WEB_PORT", "GAS_GAMMA_WEB_PROXY_URL", "gas-gamma-wgl-ready", "gas-gamma-wgl-failed", "physics-experiment:gas-gamma", "气体 γ 常数", 740)
+GRATING_INTERFERENCE = ExperimentService("grating_interference", "光栅干涉实验", EXPERIMENT_ROOT / "grating_interference", EXPERIMENT_ROOT / "grating_interference" / "web.jl", "PHYSICS_GRATING_INTERFERENCE_PORT", 9403, "GRATING_INTERFERENCE_WEB_HOST", "GRATING_INTERFERENCE_WEB_PORT", "GRATING_INTERFERENCE_WEB_PROXY_URL", "grating-interference-wgl-ready", "grating-interference-wgl-failed", "physics-experiment:grating-interference", "光栅干涉", 740)
+LIGHT_POLARIZATION = ExperimentService("light_polarization", "光的偏振研究实验", EXPERIMENT_ROOT / "light_polarization", EXPERIMENT_ROOT / "light_polarization" / "web.jl", "PHYSICS_LIGHT_POLARIZATION_PORT", 9404, "LIGHT_POLARIZATION_WEB_HOST", "LIGHT_POLARIZATION_WEB_PORT", "LIGHT_POLARIZATION_WEB_PROXY_URL", "light-polarization-wgl-ready", "light-polarization-wgl-failed", "physics-experiment:light-polarization", "光的偏振研究", 740)
+MICHELSON_WAVELENGTH = ExperimentService("michelson_wavelength", "迈克尔逊干涉仪测波长实验", EXPERIMENT_ROOT / "michelson_wavelength", EXPERIMENT_ROOT / "michelson_wavelength" / "web.jl", "PHYSICS_MICHELSON_WAVELENGTH_PORT", 9405, "MICHELSON_WAVELENGTH_WEB_HOST", "MICHELSON_WAVELENGTH_WEB_PORT", "MICHELSON_WAVELENGTH_WEB_PROXY_URL", "michelson-wavelength-wgl-ready", "michelson-wavelength-wgl-failed", "physics-experiment:michelson-wavelength", "迈克尔逊干涉仪", 740)
+
+@dataclass(frozen=True)
+class ExperimentDefinition:
+    category: str
+    name: str
+    display_name: str
+    service: ExperimentService
+
+
+EXPERIMENT_REGISTRY: tuple[ExperimentDefinition, ...] = (
+    ExperimentDefinition("力学实验", "杨氏模量", "杨氏模量", YOUNG_MODULUS),
+    ExperimentDefinition("力学实验", "转动惯量", "转动惯量", ROTATIONAL_INERTIA),
+    ExperimentDefinition("力学实验", "粘滞系数测定", "粘滞系数测定", VISCOSITY),
+    ExperimentDefinition("热学实验", "固体比热容的测定", "固体比热容的测定", SPECIFIC_HEAT),
+    ExperimentDefinition("热学实验", "温度传感器特性的测定", "温度传感器特性的测定", TEMPERATURE_SENSOR),
+    ExperimentDefinition("热学实验", "固体热传导系数测定", "固体热传导系数测定", THERMAL_CONDUCTIVITY),
+    ExperimentDefinition("热学实验", "气体γ常数测定", "气体γ常数测定", GAS_GAMMA),
+    ExperimentDefinition("振动波动", "声速测量", "声速测量", SOUND_SPEED),
+    ExperimentDefinition("振动波动", "李萨如图形", "李萨如图形", LISSAJOUS),
+    ExperimentDefinition("电磁实验", "电子荷质比", "电子荷质比", ELECTRON_EM),
+    ExperimentDefinition("电磁实验", "惠斯通电桥测电阻", "惠斯通电桥测电阻", WHEATSTONE_BRIDGE),
+    ExperimentDefinition("电磁实验", "霍尔效应测磁场分布", "霍尔效应测磁场分布", HALL_EFFECT),
+    ExperimentDefinition("电磁实验", "铁磁滞回线测定与观察", "铁磁滞回线测定与观察", MAGNETIC_HYSTERESIS),
+    ExperimentDefinition("光学实验", "牛顿环", "牛顿环", NEWTON_RINGS),
+    ExperimentDefinition("光学实验", "双棱镜干涉", "双棱镜干涉测波长", BIPRISM),
+    ExperimentDefinition("光学实验", "薄透镜焦距的测定", "薄透镜焦距的测定", THIN_LENS_FOCAL),
+    ExperimentDefinition("光学实验", "三棱镜折射率测定", "三棱镜折射率测定", PRISM_REFRACTIVE_INDEX),
+    ExperimentDefinition("光学实验", "光栅干涉", "光栅干涉", GRATING_INTERFERENCE),
+    ExperimentDefinition("光学实验", "光的偏振研究", "光的偏振研究", LIGHT_POLARIZATION),
+    ExperimentDefinition("光学实验", "迈克尔逊干涉仪测波长", "迈克尔逊干涉仪测波长", MICHELSON_WAVELENGTH),
+    ExperimentDefinition("近代物理实验", "光电效应", "光电效应", PHOTOELECTRIC),
+    ExperimentDefinition("近代物理实验", "弗兰克-赫兹", "弗兰克-赫兹", FRANCK_HERTZ),
+)
+EXPERIMENT_DEFINITION_BY_NAME = {
+    definition.name: definition for definition in EXPERIMENT_REGISTRY
+}
+if len(EXPERIMENT_DEFINITION_BY_NAME) != len(EXPERIMENT_REGISTRY):
+    raise RuntimeError("实验 registry 中存在重复名称")
+EXPERIMENT_GROUPS: dict[str, tuple[str, ...]] = {
+    category: tuple(
+        definition.name
+        for definition in EXPERIMENT_REGISTRY
+        if definition.category == category
+    )
+    for category in dict.fromkeys(
+        definition.category for definition in EXPERIMENT_REGISTRY
     )
 }
+EXPERIMENT_DISPLAY_NAMES = {
+    definition.name: definition.display_name
+    for definition in EXPERIMENT_REGISTRY
+    if definition.display_name != definition.name
+}
+EXPERIMENT_CATEGORY_BY_NAME = {
+    definition.name: definition.category for definition in EXPERIMENT_REGISTRY
+}
+EXPERIMENT_SERVICE_BY_NAME = {
+    definition.name: definition.service for definition in EXPERIMENT_REGISTRY
+}
+DEFAULT_EXPERIMENT = EXPERIMENT_REGISTRY[0].name
+SERVICES = {
+    definition.service.key: definition.service for definition in EXPERIMENT_REGISTRY
+}
+if len(SERVICES) != len(EXPERIMENT_REGISTRY):
+    raise RuntimeError("实验 registry 中存在重复 service key")
 _processes: dict[str, subprocess.Popen] = {}
 _logs: dict[str, IO[str]] = {}
 _locks = {key: threading.Lock() for key in SERVICES}
@@ -692,6 +707,7 @@ def render_experiment_hub() -> None:
         key="visual_experiment_name",
         width="stretch",
     ) or category_experiments[0]
+    selected_service = EXPERIMENT_SERVICE_BY_NAME[selected]
 
     if selected == "李萨如图形":
         st.markdown(
@@ -718,7 +734,7 @@ def render_experiment_hub() -> None:
             width="stretch",
         ) or "相位差"
         _start_and_render(
-            LISSAJOUS,
+            selected_service,
             routes[experiment_name],
             f"李萨如图形 · {experiment_name}",
         )
@@ -747,7 +763,7 @@ def render_experiment_hub() -> None:
             width="stretch",
         ) or "回声法"
         _start_and_render(
-            SOUND_SPEED,
+            selected_service,
             routes[experiment_name],
             f"声速测量 · {experiment_name}",
         )
@@ -776,7 +792,7 @@ def render_experiment_hub() -> None:
             width="stretch",
         ) or "电子束圆轨道"
         _start_and_render(
-            ELECTRON_EM,
+            selected_service,
             routes[experiment_name],
             f"电子荷质比 · {experiment_name}",
         )
@@ -805,7 +821,7 @@ def render_experiment_hub() -> None:
             width="stretch",
         ) or "光电管伏安特性"
         _start_and_render(
-            PHOTOELECTRIC,
+            selected_service,
             routes[experiment_name],
             f"光电效应 · {experiment_name}",
         )
@@ -834,7 +850,7 @@ def render_experiment_hub() -> None:
             width="stretch",
         ) or "分波阵面与虚光源"
         _start_and_render(
-            BIPRISM,
+            selected_service,
             routes[experiment_name],
             f"双棱镜干涉 · {experiment_name}",
         )
@@ -863,7 +879,7 @@ def render_experiment_hub() -> None:
             width="stretch",
         ) or "等厚干涉与环纹"
         _start_and_render(
-            NEWTON_RINGS,
+            selected_service,
             routes[experiment_name],
             f"牛顿环 · {experiment_name}",
         )
@@ -892,7 +908,7 @@ def render_experiment_hub() -> None:
             width="stretch",
         ) or "物距—像距法"
         _start_and_render(
-            THIN_LENS_FOCAL,
+            selected_service,
             routes[experiment_name],
             f"薄透镜焦距的测定 · {experiment_name}",
         )
@@ -921,7 +937,7 @@ def render_experiment_hub() -> None:
             width="stretch",
         ) or "分光计调节"
         _start_and_render(
-            PRISM_REFRACTIVE_INDEX,
+            selected_service,
             routes[experiment_name],
             f"三棱镜折射率测定 · {experiment_name}",
         )
@@ -950,7 +966,7 @@ def render_experiment_hub() -> None:
             width="stretch",
         ) or "光杠杆放大原理"
         _start_and_render(
-            YOUNG_MODULUS,
+            selected_service,
             routes[experiment_name],
             f"杨氏模量 · {experiment_name}",
         )
@@ -979,7 +995,7 @@ def render_experiment_hub() -> None:
             width="stretch",
         ) or "扭摆法测转动惯量"
         _start_and_render(
-            ROTATIONAL_INERTIA,
+            selected_service,
             routes[experiment_name],
             f"转动惯量 · {experiment_name}",
         )
@@ -1008,7 +1024,7 @@ def render_experiment_hub() -> None:
             width="stretch",
         ) or "斯托克斯定律与受力平衡"
         _start_and_render(
-            VISCOSITY,
+            selected_service,
             routes[experiment_name],
             f"粘滞系数测定 · {experiment_name}",
         )
@@ -1037,7 +1053,7 @@ def render_experiment_hub() -> None:
             width="stretch",
         ) or "混合法与热量平衡"
         _start_and_render(
-            SPECIFIC_HEAT,
+            selected_service,
             routes[experiment_name],
             f"固体比热容的测定 · {experiment_name}",
         )
@@ -1066,7 +1082,7 @@ def render_experiment_hub() -> None:
             width="stretch",
         ) or "Pt100 静态标定与灵敏度"
         _start_and_render(
-            TEMPERATURE_SENSOR,
+            selected_service,
             routes[experiment_name],
             f"温度传感器特性的测定 · {experiment_name}",
         )
@@ -1095,7 +1111,7 @@ def render_experiment_hub() -> None:
             width="stretch",
         ) or "稳态导热与温度梯度"
         _start_and_render(
-            THERMAL_CONDUCTIVITY,
+            selected_service,
             routes[experiment_name],
             f"固体热传导系数测定 · {experiment_name}",
         )
@@ -1124,7 +1140,7 @@ def render_experiment_hub() -> None:
             width="stretch",
         ) or "桥路原理与零电流平衡"
         _start_and_render(
-            WHEATSTONE_BRIDGE,
+            selected_service,
             routes[experiment_name],
             f"惠斯通电桥测电阻 · {experiment_name}",
         )
@@ -1153,7 +1169,7 @@ def render_experiment_hub() -> None:
             width="stretch",
         ) or "霍尔电压标定"
         _start_and_render(
-            HALL_EFFECT,
+            selected_service,
             routes[experiment_name],
             f"霍尔效应测磁场分布 · {experiment_name}",
         )
@@ -1182,7 +1198,7 @@ def render_experiment_hub() -> None:
             width="stretch",
         ) or "基本磁滞回线与特征量"
         _start_and_render(
-            MAGNETIC_HYSTERESIS,
+            selected_service,
             routes[experiment_name],
             f"铁磁滞回线测定与观察 · {experiment_name}",
         )
@@ -1215,10 +1231,38 @@ def render_experiment_hub() -> None:
             width="stretch",
         ) or "实验装置与能级跃迁"
         _start_and_render(
-            FRANCK_HERTZ,
+            selected_service,
             routes[experiment_name],
             f"弗兰克-赫兹 · {experiment_name}",
         )
+    elif selected == "气体γ常数测定":
+        st.markdown('<div class="experiment-summary"><h3>γ 气体 γ 常数测定实验</h3><p>研究绝热膨胀、等容回温、压强差读数，以及 γ 值和测量不确定度。</p></div>', unsafe_allow_html=True)
+        routes = {"绝热膨胀与等容升温": "/process", "压强差读数": "/pressure", "γ值计算与气体比较": "/gamma", "重复测量与不确定度": "/uncertainty"}
+        if "gas_gamma_experiment_name" not in st.session_state:
+            st.session_state.gas_gamma_experiment_name = next(iter(routes))
+        experiment_name = st.segmented_control("实验项目", list(routes), key="gas_gamma_experiment_name", width="stretch") or next(iter(routes))
+        _start_and_render(selected_service, routes[experiment_name], f"气体γ常数测定 · {experiment_name}")
+    elif selected == "光栅干涉":
+        st.markdown('<div class="experiment-summary"><h3>▤ 光栅干涉实验</h3><p>观察多缝干涉，测量衍射角和未知波长，并研究光栅分辨本领。</p></div>', unsafe_allow_html=True)
+        routes = {"多缝干涉与主极大": "/principle", "衍射角与光谱": "/spectrum", "未知波长测量": "/wavelength", "分辨本领与不确定度": "/resolution"}
+        if "grating_interference_experiment_name" not in st.session_state:
+            st.session_state.grating_interference_experiment_name = next(iter(routes))
+        experiment_name = st.segmented_control("实验项目", list(routes), key="grating_interference_experiment_name", width="stretch") or next(iter(routes))
+        _start_and_render(selected_service, routes[experiment_name], f"光栅干涉 · {experiment_name}")
+    elif selected == "光的偏振研究":
+        st.markdown('<div class="experiment-summary"><h3>◐ 光的偏振研究实验</h3><p>验证马吕斯定律和布儒斯特定律，研究波片、椭圆偏振及偏振度。</p></div>', unsafe_allow_html=True)
+        routes = {"马吕斯定律": "/malus", "布儒斯特角": "/brewster", "波片与椭圆偏振": "/waveplate", "偏振度拟合与误差": "/fit"}
+        if "light_polarization_experiment_name" not in st.session_state:
+            st.session_state.light_polarization_experiment_name = next(iter(routes))
+        experiment_name = st.segmented_control("实验项目", list(routes), key="light_polarization_experiment_name", width="stretch") or next(iter(routes))
+        _start_and_render(selected_service, routes[experiment_name], f"光的偏振研究 · {experiment_name}")
+    elif selected == "迈克尔逊干涉仪测波长":
+        st.markdown('<div class="experiment-summary"><h3>◉ 迈克尔逊干涉仪测波长实验</h3><p>调节等倾干涉光路，通过移镜计数和线性拟合测量激光波长。</p></div>', unsafe_allow_html=True)
+        routes = {"光路调节与等倾干涉": "/alignment", "移镜与条纹计数": "/counting", "波长线性拟合": "/wavelength", "回程差与不确定度": "/uncertainty"}
+        if "michelson_wavelength_experiment_name" not in st.session_state:
+            st.session_state.michelson_wavelength_experiment_name = next(iter(routes))
+        experiment_name = st.segmented_control("实验项目", list(routes), key="michelson_wavelength_experiment_name", width="stretch") or next(iter(routes))
+        _start_and_render(selected_service, routes[experiment_name], f"迈克尔逊干涉仪测波长 · {experiment_name}")
     else:
         st.error("实验选择状态异常，请重新选择实验。")
 
@@ -1248,16 +1292,25 @@ _EMBED_HTML = r"""
     background:#1d3346; color:#eef5fa; font:inherit; cursor:pointer; }
   button.visible { display:block; }
   @keyframes spin { to { transform:rotate(360deg); } }
+  @media (max-width:640px) {
+    .stage { border-radius:0; }
+    .loading { padding:20px; }
+    .detail { max-width:100%; }
+  }
+  @media (prefers-reduced-motion:reduce) {
+    .loading { transition:none; }
+    .spinner { animation:none; }
+  }
 </style>
 </head>
 <body>
 <main class="stage">
   <iframe id="experiment" title="交互式大学物理实验"></iframe>
-  <div class="loading" id="loading">
-    <div class="spinner" id="spinner"></div>
+  <div class="loading" id="loading" role="status" aria-live="polite" aria-busy="true">
+    <div class="spinner" id="spinner" aria-hidden="true"></div>
     <div class="title" id="title"></div>
     <div class="detail" id="detail">正在连接实验服务并初始化 WebGL 图形……</div>
-    <button id="retry">重新连接</button>
+    <button id="retry" type="button">重新连接</button>
   </div>
 </main>
 <script>
@@ -1275,10 +1328,15 @@ _EMBED_HTML = r"""
   const experimentUrl = () => settings.path;
   const showReady = () => {
     window.clearTimeout(timeout);
+    loading.setAttribute('aria-busy', 'false');
     loading.classList.add('hidden');
   };
   const showError = message => {
     window.clearTimeout(timeout);
+    loading.classList.remove('hidden');
+    loading.setAttribute('role', 'alert');
+    loading.setAttribute('aria-live', 'assertive');
+    loading.setAttribute('aria-busy', 'false');
     spinner.style.display = 'none';
     title.textContent = `${settings.title}暂时无法显示`;
     detail.textContent = message || '内嵌实验服务暂时不可用，请稍后重新连接。';
@@ -1286,6 +1344,10 @@ _EMBED_HTML = r"""
     retry.classList.add('visible');
   };
   const connect = () => {
+    loading.classList.remove('hidden');
+    loading.setAttribute('role', 'status');
+    loading.setAttribute('aria-live', 'polite');
+    loading.setAttribute('aria-busy', 'true');
     spinner.style.display = '';
     detail.classList.remove('error');
     detail.textContent = '正在连接实验服务并初始化 WebGL 图形……';

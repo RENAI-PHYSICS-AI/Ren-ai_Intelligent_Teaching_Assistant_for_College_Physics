@@ -36,6 +36,10 @@ $asr = $null
 $admin = $null
 $web = $null
 try {
+    & ".venv\Scripts\python.exe" migrate_db.py
+    if ($LASTEXITCODE -ne 0) {
+        throw "SQLite 数据库迁移失败。"
+    }
     & ".venv\Scripts\python.exe" download_asr_model.py
     if ($LASTEXITCODE -ne 0) {
         throw "Paraformer 流式模型准备失败。"

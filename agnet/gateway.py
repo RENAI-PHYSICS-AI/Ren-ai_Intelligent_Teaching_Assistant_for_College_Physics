@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
 import os
 import ssl
 from collections.abc import AsyncIterator
 
-from aiohttp import ClientSession, ClientTimeout, WSMsgType, web
+from aiohttp import ClientError, ClientSession, ClientTimeout, ServerTimeoutError, WSMsgType, web
 from multidict import CIMultiDict
 
 
@@ -21,6 +22,32 @@ WEBSOCKET_MAX_MESSAGE_SIZE = max(
     4,
     int(os.getenv("PHYSICS_WEBSOCKET_MAX_MESSAGE_MB", "64")),
 ) * 1024**2
+REQUEST_MAX_BYTES = max(
+    1,
+    min(int(os.getenv("PHYSICS_GATEWAY_MAX_REQUEST_MB", "25")), 256),
+) * 1024**2
+UPSTREAM_CONNECT_TIMEOUT = max(
+    1.0,
+    min(float(os.getenv("PHYSICS_GATEWAY_CONNECT_TIMEOUT_SECONDS", "10")), 120.0),
+)
+UPSTREAM_READ_TIMEOUT = max(
+    5.0,
+    min(float(os.getenv("PHYSICS_GATEWAY_READ_TIMEOUT_SECONDS", "300")), 3600.0),
+)
+
+
+def _trusted_proxy_networks() -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+    raw = os.getenv("PHYSICS_GATEWAY_TRUSTED_PROXIES", "127.0.0.1/32,::1/128")
+    networks = []
+    for value in raw.split(","):
+        try:
+            networks.append(ipaddress.ip_network(value.strip(), strict=False))
+        except ValueError:
+            LOGGER.warning("Ignoring invalid trusted proxy network: %s", value.strip())
+    return tuple(networks)
+
+
+TRUSTED_PROXY_NETWORKS = _trusted_proxy_networks()
 EXPERIMENT_UPSTREAMS = {
     "/experiments/lissajous": os.getenv(
         "PHYSICS_LISSAJOUS_UPSTREAM", "http://127.0.0.1:9384"
@@ -76,6 +103,10 @@ EXPERIMENT_UPSTREAMS = {
     "/experiments/thermal-conductivity": os.getenv(
         "PHYSICS_THERMAL_CONDUCTIVITY_UPSTREAM", "http://127.0.0.1:9401"
     ),
+    "/experiments/gas-gamma": os.getenv("PHYSICS_GAS_GAMMA_UPSTREAM", "http://127.0.0.1:9402"),
+    "/experiments/grating-interference": os.getenv("PHYSICS_GRATING_INTERFERENCE_UPSTREAM", "http://127.0.0.1:9403"),
+    "/experiments/light-polarization": os.getenv("PHYSICS_LIGHT_POLARIZATION_UPSTREAM", "http://127.0.0.1:9404"),
+    "/experiments/michelson-wavelength": os.getenv("PHYSICS_MICHELSON_WAVELENGTH_UPSTREAM", "http://127.0.0.1:9405"),
 }
 ADMIN_PATHS = {
     "/admin-login",
@@ -85,11 +116,16 @@ ADMIN_PATHS = {
     "/identity-roster/excel",
     "/session-login",
     "/session-logout",
+    "/teacher-approvals",
 }
 
 
 def is_admin_path(path: str) -> bool:
-    return path in ADMIN_PATHS or path.startswith("/identity-roster/")
+    return (
+        path in ADMIN_PATHS
+        or path.startswith("/identity-roster/")
+        or path.startswith("/teacher-approvals/")
+    )
 HOP_BY_HOP = {
     "connection",
     "content-length",
@@ -127,30 +163,99 @@ def upstream_url(request: web.Request) -> str:
 
 
 def forward_headers(request: web.Request) -> dict[str, str]:
+    forwarding_headers = {
+        "forwarded",
+        "x-forwarded-for",
+        "x-forwarded-host",
+        "x-forwarded-prefix",
+        "x-forwarded-proto",
+    }
     headers = {
         key: value
         for key, value in request.headers.items()
-        if key.lower() not in HOP_BY_HOP and not key.lower().startswith("sec-websocket-")
+        if key.lower() not in HOP_BY_HOP
+        and key.lower() not in forwarding_headers
+        and not key.lower().startswith("sec-websocket-")
     }
-    peer = request.remote or ""
-    previous = request.headers.get("X-Forwarded-For", "")
-    headers["X-Forwarded-For"] = ", ".join(value for value in (previous, peer) if value)
-    headers["X-Forwarded-Proto"] = (
-        request.headers.get("X-Forwarded-Proto", "").split(",", 1)[0].strip()
-        or request.scheme
+    peer = _valid_ip(request.remote)
+    peer_is_trusted = bool(peer and _ip_in_trusted_networks(peer))
+    forwarded_ips = (
+        _valid_forwarded_ips(request.headers.get("X-Forwarded-For", ""))
+        if peer_is_trusted
+        else []
     )
+    headers["X-Forwarded-For"] = _canonical_client_ip(peer, forwarded_ips)
+
+    supplied_proto = request.headers.get("X-Forwarded-Proto", "").split(",", 1)[0].strip().lower()
+    headers["X-Forwarded-Proto"] = (
+        supplied_proto
+        if peer_is_trusted and supplied_proto in {"http", "https", "ws", "wss"}
+        else request.scheme
+    )
+    supplied_host = request.headers.get("X-Forwarded-Host", "").split(",", 1)[0].strip()
     headers["X-Forwarded-Host"] = (
-        request.headers.get("X-Forwarded-Host", "").split(",", 1)[0].strip()
-        or request.host
+        supplied_host
+        if peer_is_trusted and _safe_forwarded_host(supplied_host)
+        else request.host
     )
     # Preserve the public mount point for upstream redirects.  The outer
     # reverse proxy may already have stripped /agent before this gateway sees
     # the request, so the configured prefix is the authoritative fallback.
+    supplied_prefix = request.headers.get("X-Forwarded-Prefix", "").split(",", 1)[0].strip()
     headers["X-Forwarded-Prefix"] = (
-        request.headers.get("X-Forwarded-Prefix", "").split(",", 1)[0].strip()
-        or PUBLIC_PATH_PREFIX
+        supplied_prefix
+        if peer_is_trusted
+        and supplied_prefix
+        and _safe_forwarded_prefix(supplied_prefix)
+        else PUBLIC_PATH_PREFIX
     )
     return headers
+
+
+def _valid_ip(value: str | None) -> str:
+    try:
+        return str(ipaddress.ip_address(str(value or "").strip()))
+    except ValueError:
+        return ""
+
+
+def _ip_in_trusted_networks(value: str) -> bool:
+    address = ipaddress.ip_address(value)
+    return any(address.version == network.version and address in network for network in TRUSTED_PROXY_NETWORKS)
+
+
+def _valid_forwarded_ips(raw_value: str) -> list[str]:
+    values = []
+    for item in raw_value.split(","):
+        parsed = _valid_ip(item)
+        if parsed:
+            values.append(parsed)
+    return values[-32:]
+
+
+def _canonical_client_ip(peer: str, forwarded_ips: list[str]) -> str:
+    chain = [*forwarded_ips, *([peer] if peer else [])]
+    while chain and _ip_in_trusted_networks(chain[-1]):
+        chain.pop()
+    return chain[-1] if chain else (forwarded_ips[0] if forwarded_ips else peer)
+
+
+def _safe_forwarded_host(value: str) -> bool:
+    return bool(value) and len(value) <= 255 and not any(
+        character in value for character in "\r\n/\\"
+    )
+
+
+def _safe_forwarded_prefix(value: str) -> bool:
+    return (
+        bool(value)
+        and (
+            value.startswith("/")
+            and not value.startswith("//")
+            and len(value) <= 128
+            and all(character.isalnum() or character in "/_-" for character in value)
+        )
+    )
 
 
 def forward_response_headers(upstream_headers) -> CIMultiDict[str]:
@@ -181,6 +286,32 @@ async def copy_websocket(source, destination) -> None:
             break
         elif message.type == WSMsgType.CLOSED:
             break
+
+
+class RequestBodyTooLarge(Exception):
+    def __init__(self, actual_size: int):
+        super().__init__(f"request body exceeds {REQUEST_MAX_BYTES} bytes")
+        self.actual_size = actual_size
+
+
+async def limited_request_body(request: web.Request) -> AsyncIterator[bytes]:
+    total = 0
+    async for chunk in request.content.iter_chunked(64 * 1024):
+        total += len(chunk)
+        if total > REQUEST_MAX_BYTES:
+            raise RequestBodyTooLarge(total)
+        yield chunk
+
+
+def _caused_by(error: BaseException, expected_type: type[BaseException]) -> BaseException | None:
+    current: BaseException | None = error
+    visited: set[int] = set()
+    while current is not None and id(current) not in visited:
+        if isinstance(current, expected_type):
+            return current
+        visited.add(id(current))
+        current = current.__cause__ or current.__context__
+    return None
 
 
 async def websocket_proxy(request: web.Request) -> web.WebSocketResponse:
@@ -226,33 +357,65 @@ async def http_proxy(request: web.Request) -> web.StreamResponse:
     if request.headers.get("Upgrade", "").lower() == "websocket":
         return await websocket_proxy(request)
 
-    session: ClientSession = request.app["client"]
-    body: AsyncIterator[bytes] | bytes = request.content.iter_chunked(64 * 1024)
-    async with session.request(
-        request.method,
-        upstream_url(request),
-        headers=forward_headers(request),
-        data=body,
-        allow_redirects=False,
-    ) as upstream:
-        response = web.StreamResponse(
-            status=upstream.status,
-            reason=upstream.reason,
-            headers=forward_response_headers(upstream.headers),
+    content_length = request.content_length
+    if content_length is not None and content_length > REQUEST_MAX_BYTES:
+        raise web.HTTPRequestEntityTooLarge(
+            max_size=REQUEST_MAX_BYTES,
+            actual_size=content_length,
         )
-        await response.prepare(request)
-        async for chunk in upstream.content.iter_chunked(64 * 1024):
-            await response.write(chunk)
-        await response.write_eof()
-        return response
+
+    session: ClientSession = request.app["client"]
+    response: web.StreamResponse | None = None
+    request_body = limited_request_body(request) if request.can_read_body else None
+    try:
+        async with session.request(
+            request.method,
+            upstream_url(request),
+            headers=forward_headers(request),
+            data=request_body,
+            allow_redirects=False,
+        ) as upstream:
+            response = web.StreamResponse(
+                status=upstream.status,
+                reason=upstream.reason,
+                headers=forward_response_headers(upstream.headers),
+            )
+            await response.prepare(request)
+            async for chunk in upstream.content.iter_chunked(64 * 1024):
+                await response.write(chunk)
+            await response.write_eof()
+            return response
+    except Exception as exc:
+        oversized = _caused_by(exc, RequestBodyTooLarge)
+        if oversized is not None and response is None:
+            raise web.HTTPRequestEntityTooLarge(
+                max_size=REQUEST_MAX_BYTES,
+                actual_size=oversized.actual_size,
+            ) from exc
+        if response is not None:
+            LOGGER.warning("HTTP upstream stream interrupted: %s", request.path_qs)
+            response.force_close()
+            return response
+        if isinstance(exc, (asyncio.TimeoutError, ServerTimeoutError)):
+            LOGGER.warning("HTTP upstream timed out: %s", request.path_qs)
+            raise web.HTTPGatewayTimeout(text="Upstream service timed out.") from exc
+        if isinstance(exc, (ClientError, OSError)):
+            LOGGER.warning("HTTP upstream unavailable: %s", request.path_qs)
+            raise web.HTTPBadGateway(text="Upstream service is unavailable.") from exc
+        raise
 
 
 def create_app() -> web.Application:
-    app = web.Application(client_max_size=25 * 1024**2)
+    app = web.Application(client_max_size=REQUEST_MAX_BYTES)
 
     async def store_session(app: web.Application):
         async with ClientSession(
-            timeout=ClientTimeout(total=None, connect=30, sock_read=None)
+            timeout=ClientTimeout(
+                total=None,
+                connect=UPSTREAM_CONNECT_TIMEOUT,
+                sock_connect=UPSTREAM_CONNECT_TIMEOUT,
+                sock_read=UPSTREAM_READ_TIMEOUT,
+            )
         ) as session:
             app["client"] = session
             yield

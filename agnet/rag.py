@@ -4,6 +4,8 @@ import json
 import heapq
 import math
 import re
+import sys
+from array import array
 from collections import Counter, OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,10 +30,14 @@ class Chunk:
 
 
 def _terms(text: str) -> list[str]:
-    normalized = re.sub(r"\s+", "", text.lower())
-    chinese = [normalized[i : i + 2] for i in range(max(0, len(normalized) - 1))
+    lowered = text.lower()
+    normalized = re.sub(r"\s+", "", lowered)
+    chinese = [sys.intern(normalized[i : i + 2]) for i in range(max(0, len(normalized) - 1))
                if "\u4e00" <= normalized[i] <= "\u9fff"]
-    latin = re.findall(r"[a-z][a-z0-9_]{1,}|\d+(?:\.\d+)?", text.lower())
+    latin = [
+        sys.intern(term)
+        for term in re.findall(r"[a-z][a-z0-9_]{1,}|\d+(?:\.\d+)?", lowered)
+    ]
     return chinese + latin
 
 
@@ -46,9 +52,9 @@ class KnowledgeBase:
         # Preserve the original public attribute for existing single-index callers.
         self.path = self.paths[0] if len(self.paths) == 1 else self.paths
         self.chunks: list[Chunk] = []
-        self.tokens: list[list[str]] = []
+        self.doc_lengths: list[int] = []
         self.term_counts: list[Counter[str]] = []
-        self.postings: dict[str, list[int]] = {}
+        self.postings: dict[str, array] = {}
         self.df: Counter[str] = Counter()
         self.idf: dict[str, float] = {}
         self.avg_len = 1.0
@@ -66,18 +72,27 @@ class KnowledgeBase:
                 for line in handle:
                     if line.strip():
                         self.chunks.append(Chunk.from_dict(json.loads(line)))
-        self.tokens = [_terms(c.text + c.chapter) for c in self.chunks]
-        self.term_counts = [Counter(terms) for terms in self.tokens]
+        self.doc_lengths = []
+        self.term_counts = []
         self.df = Counter()
         self.postings = {}
         self.chapters_index = {}
-        for index, counts in enumerate(self.term_counts):
-            chunk = self.chunks[index]
+        total_terms = 0
+        for index, chunk in enumerate(self.chunks):
+            counts = Counter(_terms(chunk.text + chunk.chapter))
+            length = sum(counts.values())
+            self.term_counts.append(counts)
+            self.doc_lengths.append(length)
+            total_terms += length
             self.chapters_index.setdefault(chunk.chapter or "全部", set()).add(index)
             for term in counts:
                 self.df[term] += 1
-                self.postings.setdefault(term, []).append(index)
-        self.avg_len = sum(map(len, self.tokens)) / max(1, len(self.tokens))
+                posting = self.postings.get(term)
+                if posting is None:
+                    posting = array("I")
+                    self.postings[term] = posting
+                posting.append(index)
+        self.avg_len = total_terms / max(1, len(self.chunks))
         n = max(1, len(self.chunks))
         self.idf = {
             term: math.log(1 + (n - frequency + 0.5) / (frequency + 0.5))
@@ -131,7 +146,7 @@ class KnowledgeBase:
         for index in candidate_ids:
             counts = self.term_counts[index]
             chunk = self.chunks[index]
-            length = max(1, len(self.tokens[index]))
+            length = max(1, self.doc_lengths[index])
             score = 0.0
             for term in qterms_unique:
                 tf = counts[term]

@@ -22,6 +22,14 @@ def test_teacher_portal_cards_keep_equal_height_on_desktop():
     assert "@media (max-width:640px) {.teacher-portal-card {height:auto;min-height:0}}" in source
 
 
+def test_student_only_identity_binding_copy_does_not_offer_teacher_claims():
+    source = APP_SOURCE.read_text(encoding="utf-8")
+
+    assert '"绑定学生/教师身份" if allow_teacher_claim else "绑定学生身份"' in source
+    assert '"学号或工号" if allow_teacher_claim else "学号"' in source
+    assert '["学生", "教师"] if allow_teacher_claim else ["学生"]' in source
+
+
 def test_exam_agent_prioritizes_private_kb_and_keeps_mode_isolated_calls():
     source = APP_SOURCE.read_text(encoding="utf-8")
 

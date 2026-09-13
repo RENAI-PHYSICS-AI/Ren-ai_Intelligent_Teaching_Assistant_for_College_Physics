@@ -22,6 +22,7 @@ if [[ -f "$CONFIG_FILE" ]]; then
 fi
 JULIA_VERSION="${JULIA_VERSION:-1.10.10}"
 PYTHON_VERSION="${PYTHON_VERSION:-3.13}"
+UV_VERSION="0.12.5"
 PRECOMPILE_EXPERIMENTS="${PRECOMPILE_EXPERIMENTS:-1}"
 CJK_FONT_URL="https://raw.githubusercontent.com/notofonts/noto-cjk/Sans2.004/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf"
 CJK_FONT_SHA256="2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b"
@@ -31,19 +32,32 @@ if [[ "$ASR_MODEL_DIR" != /* ]]; then
   ASR_MODEL_DIR="$APP_ROOT/${ASR_MODEL_DIR#./}"
 fi
 
+set_config_value() {
+  local key="$1" value="$2" output
+  output="$(mktemp "$RUNTIME_ROOT/tmp/physics-env.XXXXXX")"
+  awk -v key="$key" -v value="$value" '
+    BEGIN { found = 0 }
+    $0 ~ "^" key "=" { print key "=" value; found = 1; next }
+    { print }
+    END { if (!found) print key "=" value }
+  ' "$CONFIG_FILE" >"$output"
+  mv -- "$output" "$CONFIG_FILE"
+}
+
 for required in \
   "$APP_ROOT/agnet/app.py" \
   "$APP_ROOT/agnet/asr_service.py" \
   "$APP_ROOT/agnet/download_asr_model.py" \
   "$APP_ROOT/agnet/gateway.py" \
-  "$APP_ROOT/agnet/data/assistant.db" \
+  "$APP_ROOT/agnet/migrate_db.py" \
+  "$APP_ROOT/agnet/install_tectonic.sh" \
   "$APP_ROOT/agnet/knowledge_base/chunks.jsonl" \
   "$APP_ROOT/教学素材" \
   "$APP_ROOT/requirements.lock"; do
   [[ -e "$required" ]] || { echo "独立目录缺少：$required" >&2; exit 1; }
 done
 
-for command in curl tar gzip sha256sum awk; do
+for command in curl tar gzip sha256sum awk mktemp install mkdir mv rm; do
   command -v "$command" >/dev/null 2>&1 || {
     echo "系统缺少基础命令 $command；请让服务器管理员预先安装。" >&2
     exit 1
@@ -62,10 +76,12 @@ mkdir -p \
   "$RUNTIME_ROOT/julia-depot" \
   "$RUNTIME_ROOT/experiment-output/sound-speed" \
   "$CONFIG_ROOT" \
+  "$APP_ROOT/agnet/data" \
   "$APP_ROOT/agnet/runtime" \
   "$APP_ROOT/agnet/runtime/experiments" \
   "$APP_ROOT/agnet/experiments/sound_speed/output"
 chmod u+rwx \
+  "$APP_ROOT/agnet/data" \
   "$APP_ROOT/agnet/runtime" \
   "$APP_ROOT/agnet/runtime/experiments"
 touch \
@@ -85,7 +101,7 @@ touch \
   "$APP_ROOT/agnet/runtime/experiments/prism_refractive_index.log" \
   "$APP_ROOT/agnet/runtime/experiments/thermal_conductivity.log"
 
-echo "[1/8] 在项目目录准备中文字体……"
+echo "[1/9] 在项目目录准备中文字体……"
 if ! printf '%s  %s\n' "$CJK_FONT_SHA256" "$CJK_FONT_PATH" | \
     sha256sum --check --status 2>/dev/null; then
   font_tmp="$(mktemp "$RUNTIME_ROOT/tmp/physics-font.XXXXXX")"
@@ -99,12 +115,25 @@ if ! printf '%s  %s\n' "$CJK_FONT_SHA256" "$CJK_FONT_PATH" | \
 fi
 export PHYSICS_CJK_FONT="${PHYSICS_CJK_FONT:-$CJK_FONT_PATH}"
 
-echo "[2/8] 在用户目录安装 uv 与 Python ${PYTHON_VERSION}……"
+echo "[2/9] 在用户目录安装 uv ${UV_VERSION} 与 Python ${PYTHON_VERSION}……"
 UV_BIN="$RUNTIME_ROOT/bin/uv"
-if [[ ! -x "$UV_BIN" ]] || ! "$UV_BIN" pip sync --help >/dev/null 2>&1; then
+installed_uv_version="$("$UV_BIN" --version 2>/dev/null | awk '{print $2}' || true)"
+if [[ ! -x "$UV_BIN" || "$installed_uv_version" != "$UV_VERSION" ]]; then
   rm -f -- "$UV_BIN" "$RUNTIME_ROOT/bin/uvx"
-  curl -LsSf https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="$RUNTIME_ROOT/bin" sh
+  uv_installer="$(mktemp "$RUNTIME_ROOT/tmp/uv-installer.XXXXXX.sh")"
+  if ! curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+      "https://astral.sh/uv/${UV_VERSION}/install.sh" -o "$uv_installer"; then
+    rm -f -- "$uv_installer"
+    echo "uv ${UV_VERSION} 安装器下载失败。" >&2
+    exit 1
+  fi
+  env UV_UNMANAGED_INSTALL="$RUNTIME_ROOT/bin" sh "$uv_installer"
+  rm -f -- "$uv_installer"
 fi
+[[ "$("$UV_BIN" --version | awk '{print $2}')" == "$UV_VERSION" ]] || {
+  echo "uv 版本校验失败，期望 ${UV_VERSION}。" >&2
+  exit 1
+}
 if [[ ! -x "$APP_ROOT/agnet/.venv/bin/python" ]]; then
   env UV_CACHE_DIR="$RUNTIME_ROOT/uv-cache" UV_PYTHON_INSTALL_DIR="$RUNTIME_ROOT/python" \
     "$UV_BIN" venv --python "$PYTHON_VERSION" "$APP_ROOT/agnet/.venv"
@@ -112,11 +141,14 @@ fi
 env UV_CACHE_DIR="$RUNTIME_ROOT/uv-cache" UV_PYTHON_INSTALL_DIR="$RUNTIME_ROOT/python" \
   "$UV_BIN" pip sync --python "$APP_ROOT/agnet/.venv/bin/python" "$APP_ROOT/requirements.lock"
 
-echo "[3/8] 下载并校验 Paraformer 中文流式 INT8 模型……"
+echo "[3/9] 安装并离线验证固定版本 Tectonic……"
+bash "$APP_ROOT/agnet/install_tectonic.sh"
+
+echo "[4/9] 下载并校验 Paraformer 中文流式 INT8 模型……"
 env PHYSICS_ASR_MODEL_DIR="$ASR_MODEL_DIR" \
   "$APP_ROOT/agnet/.venv/bin/python" "$APP_ROOT/agnet/download_asr_model.py"
 
-echo "[4/8] 在用户目录安装 Julia ${JULIA_VERSION}……"
+echo "[5/9] 在用户目录安装 Julia ${JULIA_VERSION}……"
 JULIA_HOME="$RUNTIME_ROOT/julia-${JULIA_VERSION}"
 JULIA_BIN="$JULIA_HOME/bin/julia"
 if [[ ! -x "$JULIA_BIN" ]]; then
@@ -149,16 +181,32 @@ if [[ ! -x "$JULIA_BIN" ]]; then
 fi
 ln -sfn "$JULIA_BIN" "$RUNTIME_ROOT/bin/julia"
 
-echo "[5/8] 创建用户级运行配置……"
+echo "[6/9] 创建用户级运行配置……"
 if [[ ! -f "$CONFIG_FILE" ]]; then
   cp "$APP_ROOT/physics-assistant.env.example" "$CONFIG_FILE"
 fi
+# Migrate legacy wildcard HTTP configurations to the mandatory loopback
+# upstream.  External HTTPS uses PHYSICS_GATEWAY_HTTPS_HOST independently.
+if [[ -n "${PHYSICS_GATEWAY_HTTPS_PORT:-}" && -z "${PHYSICS_GATEWAY_HTTPS_HOST:-}" ]]; then
+  legacy_gateway_host="${PHYSICS_GATEWAY_HOST:-0.0.0.0}"
+  set_config_value PHYSICS_GATEWAY_HTTPS_HOST "$legacy_gateway_host"
+  export PHYSICS_GATEWAY_HTTPS_HOST="$legacy_gateway_host"
+  echo "警告：检测到旧版 HTTPS 配置，已将原监听地址 $legacy_gateway_host 迁移到 PHYSICS_GATEWAY_HTTPS_HOST。" >&2
+fi
+set_config_value PHYSICS_GATEWAY_HOST "127.0.0.1"
 chmod 600 "$CONFIG_FILE" "$APP_ROOT/agnet/data/assistant.db" 2>/dev/null || true
+set -a
+# shellcheck disable=SC1090
+source "$CONFIG_FILE"
+set +a
 [[ -f "$APP_ROOT/agnet/data/admin_signing_secret" ]] && \
   chmod 600 "$APP_ROOT/agnet/data/admin_signing_secret"
 
-echo "[6/8] 检查迁移管理员……"
+echo "[7/9] 初始化空库并检查迁移管理员……"
 database="$APP_ROOT/agnet/data/assistant.db"
+env PYTHONPATH="$APP_ROOT/agnet" \
+  "$APP_ROOT/agnet/.venv/bin/python" "$APP_ROOT/agnet/migrate_db.py"
+chmod 600 "$database"
 has_admin="$($APP_ROOT/agnet/.venv/bin/python -c '
 import sqlite3, sys
 try:
@@ -169,9 +217,9 @@ except sqlite3.Error:
     print(0)
 ' "$database")"
 if [[ "$has_admin" != "1" ]]; then
-  username="${BOOTSTRAP_ADMIN_USERNAME:-tjracphy}"
-  password="${BOOTSTRAP_ADMIN_PASSWORD:-}"
-  display_name="${BOOTSTRAP_ADMIN_DISPLAY_NAME:-课程管理员}"
+  username="${BOOTSTRAP_ADMIN_USERNAME:-${ADMIN_USERNAME:-tjracphy}}"
+  password="${BOOTSTRAP_ADMIN_PASSWORD:-${ADMIN_PASSWORD:-}}"
+  display_name="${BOOTSTRAP_ADMIN_DISPLAY_NAME:-${ADMIN_DISPLAY_NAME:-课程管理员}}"
   if [[ -z "$password" ]]; then
     [[ -t 0 ]] || { echo "需要交互创建管理员，或设置 BOOTSTRAP_ADMIN_PASSWORD。" >&2; exit 1; }
     read -r -p "管理员用户名 [$username]：" entered
@@ -196,9 +244,9 @@ analytics_db.ensure_admin_user(os.environ["PHYSICS_BOOTSTRAP_ADMIN_USERNAME"], p
   unset password confirmation BOOTSTRAP_ADMIN_PASSWORD
 fi
 
-echo "[7/8] 初始化可视化实验……"
+echo "[8/9] 初始化可视化实验……"
 if [[ "$PRECOMPILE_EXPERIMENTS" == "1" ]]; then
-  for experiment in lissajous sound_speed electron_em photoelectric biprism newton_rings young_modulus rotational_inertia viscosity specific_heat franck_hertz temperature_sensor wheatstone_bridge hall_effect magnetic_hysteresis thin_lens_focal prism_refractive_index thermal_conductivity; do
+  for experiment in lissajous sound_speed electron_em photoelectric biprism newton_rings young_modulus rotational_inertia viscosity specific_heat franck_hertz temperature_sensor wheatstone_bridge hall_effect magnetic_hysteresis thin_lens_focal prism_refractive_index thermal_conductivity gas_gamma grating_interference light_polarization michelson_wavelength; do
     env HOME="$HOME" JULIA_DEPOT_PATH="$RUNTIME_ROOT/julia-depot" \
       JULIA_NUM_THREADS="${JULIA_NUM_THREADS:-2}" \
       "$JULIA_BIN" --startup-file=no --project="$APP_ROOT/agnet/experiments/$experiment" \
@@ -211,15 +259,13 @@ else
   echo "已按 PRECOMPILE_EXPERIMENTS=0 跳过 Julia 预编译。"
 fi
 
-echo "[8/8] 启动用户级服务……"
+echo "[9/9] 启动用户级服务……"
 chmod 700 "$APP_ROOT/install.sh" "$APP_ROOT/manage.sh"
 "$APP_ROOT/manage.sh" restart
 
-lan_ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
 echo
 echo "安装完成。所有文件均位于：$APP_ROOT"
-echo "访问地址：http://${lan_ip:-服务器IP}:8501"
+echo "本机诊断地址：http://127.0.0.1:8501"
 echo "管理命令：bash $APP_ROOT/manage.sh {start|stop|restart|status|logs|check}"
 echo "本安装器未修改系统目录、防火墙、SELinux、Nginx 或系统级 systemd。"
-echo "若其他电脑无法访问，请联系服务器管理员只放行 TCP 8501。"
-echo "远程浏览器使用麦克风还需要由统一入口提供可信 HTTPS/WSS。"
+echo "8501 默认仅监听回环地址，请勿直接对外放行；远程访问请配置可信 HTTPS/WSS 反向代理。"

@@ -59,3 +59,47 @@ def test_manage_starts_units_and_checks_two_authenticated_model_apis() -> None:
     assert "PHYSICS_BASE_URL=http://127.0.0.1:1237/v1" in env
     assert "PHYSICS_EXAM_CONTEXT_WINDOW=1048576" in env
     assert "PHYSICS_USE_LEGACY_LM_STUDIO=0" in env
+
+
+def test_rocky_installer_is_reproducible_and_bootstraps_an_empty_database() -> None:
+    install = (ROCKY_DIR / "install.sh").read_text(encoding="utf-8")
+    env = (ROCKY_DIR / "physics-assistant.env.example").read_text(encoding="utf-8")
+    required_block = install.split("for required in", 1)[1].split("; do", 1)[0]
+
+    assert 'UV_VERSION="0.12.5"' in install
+    assert 'https://astral.sh/uv/${UV_VERSION}/install.sh' in install
+    assert '"$UV_BIN" --version' in install
+    assert 'bash "$APP_ROOT/agnet/install_tectonic.sh"' in install
+    assert "agnet/data/assistant.db" not in required_block
+    assert '"$APP_ROOT/agnet/.venv/bin/python" "$APP_ROOT/agnet/migrate_db.py"' in install
+    assert 'set_config_value PHYSICS_GATEWAY_HOST "127.0.0.1"' in install
+    assert 'set_config_value PHYSICS_GATEWAY_HTTPS_HOST "$legacy_gateway_host"' in install
+    assert "PHYSICS_GATEWAY_HOST=127.0.0.1" in env
+    assert "PHYSICS_EXAM_SOURCE_PASSWORDS=" in env
+    assert "PHYSICS_PDF_PASSWORDS=" in env
+
+
+def test_every_launcher_migrates_before_services_and_separates_https_binding() -> None:
+    install = (ROCKY_DIR / "install.sh").read_text(encoding="utf-8")
+    manage = (ROCKY_DIR / "manage.sh").read_text(encoding="utf-8")
+    setup_https = (ROCKY_DIR / "setup_https.sh").read_text(encoding="utf-8")
+    env = (ROCKY_DIR / "physics-assistant.env.example").read_text(encoding="utf-8")
+    windows_start = (ROCKY_DIR.parent / "agnet" / "start_all.ps1").read_text(encoding="utf-8")
+    manage_start = manage.split("start_all() {", 1)[1].split("stop_one() {", 1)[0]
+
+    assert manage_start.index("run_db_migrations") < manage_start.index("start_one admin")
+    assert windows_start.index("migrate_db.py") < windows_start.index("Start-Process")
+    assert install.index("migrate_db.py") < install.index('"$APP_ROOT/manage.sh" restart')
+    assert "PHYSICS_GATEWAY_HOST=127.0.0.1" in env
+    assert "PHYSICS_GATEWAY_HTTPS_HOST=" in env
+    assert 'PHYSICS_GATEWAY_HOST="127.0.0.1"' in manage
+    assert 'PHYSICS_GATEWAY_HOST="$PHYSICS_GATEWAY_HTTPS_HOST"' in manage
+    assert 'https_probe_host_for_bind "$PHYSICS_GATEWAY_HTTPS_HOST"' in manage
+    assert '""|0.0.0.0) printf' in manage
+    assert '::) printf' in manage
+    assert "*:*) printf '[%s]'" in manage
+    assert 'set_env_value PHYSICS_GATEWAY_HOST "127.0.0.1"' in setup_https
+    assert 'set_env_value PHYSICS_GATEWAY_HTTPS_HOST "$HTTPS_LISTEN_HOST"' in setup_https
+    assert "PHYSICS_MODEL_QUEUE_MAX_WAITERS=16" in env
+    assert "PHYSICS_MODEL_QUEUE_TIMEOUT_SECONDS=900" in env
+    assert "PHYSICS_DB_MIGRATION_LOCK_TIMEOUT_SECONDS=30" in env

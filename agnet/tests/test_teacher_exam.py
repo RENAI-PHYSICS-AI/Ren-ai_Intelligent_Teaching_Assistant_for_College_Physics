@@ -95,6 +95,7 @@ class TeacherExamDomainTests(unittest.TestCase):
             "institutional_id": "T001",
             "identity_verified": 1,
             "is_active": 1,
+            "teacher_approval_status": "approved",
         }
         self.assertTrue(teacher_exam.is_verified_teacher(account))
         for field, value in (
@@ -103,6 +104,7 @@ class TeacherExamDomainTests(unittest.TestCase):
             ("institutional_id", ""),
             ("identity_verified", 0),
             ("is_active", "0"),
+            ("teacher_approval_status", "pending"),
         ):
             denied = dict(account)
             denied[field] = value
@@ -138,6 +140,7 @@ class TeacherExamDomainTests(unittest.TestCase):
             "institutional_id": "T001",
             "identity_verified": 1,
             "is_active": 1,
+            "teacher_approval_status": "approved",
         }
         self.assertEqual(teacher_exam.PORTAL_ASSISTANT, "assistant")
         self.assertEqual(teacher_exam.PORTAL_TEACHING_EXAM, "teaching_exam")

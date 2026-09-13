@@ -53,6 +53,10 @@ class IdentityRosterEdit(IdentityRosterEntry):
     pass
 
 
+class TeacherApprovalDecision(BaseModel):
+    decision: str = Field(pattern="^(approve|reject)$")
+
+
 def _normalize_excel_header(value) -> str:
     return re.sub(r"[\s_\-/（）()]+", "", str(value or "").strip().lower())
 
@@ -211,7 +215,17 @@ def _valid_admin_session(token: str | None) -> bool:
     if not payload:
         return False
     user = db.get_user_by_username(str(payload.get("sub", "")))
-    return bool(user and user.get("role") == "admin" and user.get("is_active"))
+    try:
+        token_version = int(payload.get("ver"))
+        account_version = int(user.get("session_version", 1)) if user else 0
+    except (TypeError, ValueError):
+        return False
+    return bool(
+        user
+        and user.get("role") == "admin"
+        and user.get("is_active")
+        and token_version == account_version
+    )
 
 
 def _require_admin_token(
@@ -255,6 +269,7 @@ def _analytics_payload(recent_error_limit: int = 15) -> dict:
         "users": db.get_user_stats(),
         "learning": db.get_learning_analytics(),
         "roster": db.get_identity_roster_stats(),
+        "teacher_approvals": db.get_pending_teacher_approvals(),
         "errors": {
             "by_type": db.get_error_stats(),
             "recent": db.get_recent_errors(recent_error_limit),
@@ -440,6 +455,23 @@ def _analytics_login_page(auto_load: bool = False, public_prefix: str = "") -> s
       loadAnalytics();
     }
 
+    async function reviewTeacher(userId, decision) {
+      const action = decision === "approve" ? "批准" : "拒绝";
+      if (!confirm(`确定${action}这项教师身份申请吗？`)) return;
+      const resp = await fetch(apiUrl(`/teacher-approvals/${userId}`), {
+        method: "POST",
+        headers: {"X-Admin-Token": tokenInput.value.trim(), "Content-Type": "application/json"},
+        credentials: "same-origin",
+        body: JSON.stringify({decision})
+      });
+      if (!resp.ok) {
+        const result = await resp.json();
+        alert(result.detail || "教师身份审批失败");
+        return;
+      }
+      loadAnalytics();
+    }
+
     async function importRosterExcel() {
       const fileInput = document.getElementById("roster-excel");
       const resultEl = document.getElementById("roster-result");
@@ -502,6 +534,7 @@ def _analytics_login_page(auto_load: bool = False, public_prefix: str = "") -> s
       const total = data.total || {};
       const users = data.users || {};
       const roster = data.roster || {};
+      const teacherApprovals = data.teacher_approvals || [];
       const learning = data.learning || {};
       const learningOverview = learning.overview || {};
       const learners = learning.learners || [];
@@ -557,6 +590,14 @@ def _analytics_login_page(auto_load: bool = False, public_prefix: str = "") -> s
         const actions = row.username ? "" : `<span class="roster-actions"><button type="button" onclick='editRoster(${Number(row.id)}, ${JSON.stringify(row.identity_type)}, ${JSON.stringify(row.institutional_id)}, ${JSON.stringify(row.real_name)})'>修改</button><button type="button" class="danger" onclick='deleteRoster(${Number(row.id)}, ${JSON.stringify(label)})'>删除</button></span>`;
         return `<li><b>${escapeHtml(row.real_name)}</b> · ${typeName} · ${idName} ${escapeHtml(row.institutional_id)}<br><span class="muted">${state}</span>${actions}</li>`;
       });
+      const teacherApprovalList = itemList(teacherApprovals, row => `
+        <li><b>${escapeHtml(row.real_name || row.display_name || row.username)}</b>
+          <span class="muted">@${escapeHtml(row.username)} · 工号 ${escapeHtml(row.institutional_id)}</span>
+          <span class="roster-actions">
+            <button type="button" onclick="reviewTeacher(${Number(row.id)}, 'approve')">批准</button>
+            <button type="button" class="danger" onclick="reviewTeacher(${Number(row.id)}, 'reject')">拒绝</button>
+          </span>
+        </li>`);
       dashboard.innerHTML = `
         <div class="grid">
           <div class="card"><div class="muted">总提问数</div><div class="metric">${total.total_questions ?? 0}</div></div>
@@ -576,7 +617,7 @@ def _analytics_login_page(auto_load: bool = False, public_prefix: str = "") -> s
           </table>
         </div>
         <h2 class="section-title">身份名册</h2>
-        <p class="section-note">身份绑定为可选功能。用户填写学生或教师身份时，类型、学号或工号、姓名必须与名册匹配；每个编号只能绑定一个账号。</p>
+        <p class="section-note">身份绑定为可选功能。学生核验后立即生效；教师核验名册后还须由管理员批准，才会开放教师工作入口。</p>
         <div class="grid">
           <div class="card"><div class="muted">学生名册</div><div class="metric">${roster.student_total ?? 0}</div></div>
           <div class="card"><div class="muted">已绑定学生</div><div class="metric">${roster.student_bound ?? 0}</div></div>
@@ -604,6 +645,11 @@ def _analytics_login_page(auto_load: bool = False, public_prefix: str = "") -> s
             <h2>名册与绑定状态</h2>
             ${rosterList}
           </div>
+        </div>
+        <div class="card" style="margin-top:14px;">
+          <h2>待审批教师身份（${teacherApprovals.length}）</h2>
+          <p class="muted">批准前账号仅保留学生权限；请依据校内记录复核工号与姓名。</p>
+          ${teacherApprovalList}
         </div>
         <h2 class="section-title">学情分析</h2>
         <p class="section-note">仅统计注册学生的实际学习活动。个人及章节“问答请求失败率”均按最终失败问答数 ÷ 对应总提问数计算，只表示服务请求是否完成，不代表答案正确率、课程成绩或知识掌握度。</p>
@@ -800,7 +846,12 @@ def user_login_session(
     response = RedirectResponse(url=_public_app_url(request, mode), status_code=303)
     response.set_cookie(
         user_session.USER_SESSION_COOKIE,
-        user_session.issue_session(secret, username, session_seconds),
+        user_session.issue_session(
+            secret,
+            username,
+            session_seconds,
+            int(account.get("session_version", 1)),
+        ),
         max_age=session_seconds,
         httponly=True,
         secure=_request_is_https(request),
@@ -817,7 +868,19 @@ def user_logout_session(
     mode: str = Query(default="system", max_length=16),
 ):
     """Clear the persistent login cookie after validating a signed logout request."""
-    if not user_session.verify_logout_ticket(_load_admin_token(), ticket):
+    secret = _load_admin_token()
+    payload = user_session.verify_logout_ticket(secret, ticket)
+    session_payload = admin_auth.verify_token(
+        secret,
+        request.cookies.get(user_session.USER_SESSION_COOKIE, ""),
+        "user-session",
+    )
+    if (
+        not payload
+        or not session_payload
+        or str(payload.get("sub", "")).casefold()
+        != str(session_payload.get("sub", "")).casefold()
+    ):
         raise HTTPException(status_code=401, detail="Invalid or expired user logout ticket.")
     response = RedirectResponse(url=_public_app_url(request, mode), status_code=303)
     response.delete_cookie(
@@ -848,10 +911,19 @@ def admin_login(request: Request, ticket: str = Query(min_length=20, max_length=
     user = db.get_user_by_username(str(payload["sub"]))
     if not user or user.get("role") != "admin" or not user.get("is_active"):
         raise HTTPException(status_code=403, detail="Administrator account is not active.")
+    try:
+        if int(payload.get("ver")) != int(user.get("session_version", 1)):
+            raise HTTPException(status_code=401, detail="Administrator login ticket is stale.")
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=401, detail="Administrator login ticket is stale.")
     _USED_LOGIN_NONCES[nonce] = int(payload["exp"])
 
     session_token = admin_auth.issue_token(
-        secret, str(payload["sub"]), "admin-session", _ADMIN_SESSION_SECONDS
+        secret,
+        str(payload["sub"]),
+        "admin-session",
+        _ADMIN_SESSION_SECONDS,
+        claims={"ver": int(user.get("session_version", 1))},
     )
     # The gateway may mount this API below /agent (or another prefix).  Keep
     # the browser on that public path after ticket authentication.
@@ -871,7 +943,7 @@ def admin_login(request: Request, ticket: str = Query(min_length=20, max_length=
         httponly=True,
         secure=forwarded_proto == "https",
         samesite="strict",
-        path="/",
+        path=_request_public_prefix(request) or "/",
     )
     return response
 
@@ -921,6 +993,32 @@ def update_identity_roster(
     _require_admin_token(x_admin_token, authorization, client_ip, admin_session)
     entries = [entry.model_dump() for entry in payload.entries]
     return db.upsert_identity_roster(entries)
+
+
+@app.post("/teacher-approvals/{user_id}")
+def review_teacher_approval(
+    user_id: int,
+    payload: TeacherApprovalDecision,
+    request: Request,
+    x_admin_token: str | None = Header(default=None),
+    authorization: str | None = Header(default=None),
+    admin_session: str | None = Cookie(default=None, alias=_ADMIN_SESSION_COOKIE),
+):
+    client_ip = request.client.host if request.client else "unknown"
+    _require_admin_token(x_admin_token, authorization, client_ip, admin_session)
+    try:
+        account = db.review_teacher_approval(user_id, payload.decision)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {
+        "id": account["id"],
+        "role": account["role"],
+        "teacher_approval_status": account["teacher_approval_status"],
+    }
 
 
 @app.put("/identity-roster/{roster_id}")

@@ -15,7 +15,7 @@
 - 流式讲解：支持连续对话、LaTeX 公式和回答位置跟随。
 - 安全可视化：模型生成结构化绘图规范，由本地校验后使用 Plotly 渲染。
 - 双学习模式：在侧栏切换“智能助教”和“可视化实验”。
-- 交互实验：Windows 主项目内置十八套 Julia/WGLMakie 实验；本次新增薄透镜焦距、三棱镜折射率和固体热传导系数测定，进入可视化模式时默认打开“力学实验 → 杨氏模量”。
+- 交互实验：Windows 主项目内置二十二套 Julia/WGLMakie 实验；本次新增气体 γ 常数、光栅干涉、光的偏振和迈克尔逊干涉仪测波长，进入可视化模式时默认打开“力学实验 → 杨氏模量”。
 - 用户系统：支持注册登录、匿名进入、历史恢复、按问答轮次删除及 Markdown 导出；未回答问题也可单独删除。
 - 管理后台：支持身份名册、学习活动、反馈和运行错误统计。
 - 主题与快捷操作：支持亮色、暗色、跟随系统以及随机快速提问。
@@ -51,7 +51,7 @@
 | 薄透镜焦距专题有效文本块 | 634 |
 | 三棱镜折射率专题有效文本块 | 202 |
 | 固体热传导系数专题有效文本块 | 1,059 |
-| 合计文本块 | 58,065 |
+| 合计文本块 | 58,493 |
 
 其中包括 114 个 PDF、145 个 PPT/PPTX/PPTM/POT 和 389 个 DOC/DOCX 文件。检索使用本地 BM25，并对中文文本加入相邻双字切分。教材正文优先，习题解答次之，其他教学资料和实验知识作为补充。
 
@@ -82,7 +82,7 @@ flowchart LR
     J --> K[Plotly 图表或动画演示]
     E --> L[(SQLite 用户、历史与学情数据)]
     M[管理员后台] --> L
-    E --> N[力学、热学、振动波动、电磁、光学与近代物理共十八套实验]
+    E --> N[力学、热学、振动波动、电磁、光学与近代物理共二十二套实验]
 ```
 
 一次普通问答会经历以下过程：
@@ -112,7 +112,7 @@ flowchart LR
 │  ├─ voice_input.py        # 浏览器录音与流式转写组件
 │  ├─ asr_service.py        # Paraformer 内部 WebSocket 服务
 │  ├─ download_asr_model.py # 固定版本 INT8 模型下载与校验
-│  ├─ experiments/          # 十八套 Julia/WGLMakie 实验
+│  ├─ experiments/          # 二十二套 Julia/WGLMakie 实验
 │  ├─ storage.py            # 用户、会话和 Markdown 导出
 │  ├─ analytics_db.py       # 学情与反馈数据
 │  ├─ admin_api.py          # 管理员后台
@@ -164,7 +164,7 @@ Windows 版端口：
 | Streamlit 内部服务 | 仅监听本机 |
 | 管理员内部服务 | 仅监听本机 |
 | Paraformer 语音服务 | `127.0.0.1:8604`，由 `8501/asr/...` 代理 |
-| 十八套可视化实验 | 仅监听本机，通过 `8501/experiments/...` 内嵌 |
+| 二十二套可视化实验 | 仅监听本机，通过 `8501/experiments/...` 内嵌 |
 
 ### 模型及管理员配置
 
@@ -201,6 +201,7 @@ admin_display_name = "课程管理员"
 admin_password = "至少 12 位的独立强密码"
 admin_token = "足够长的随机令牌"
 admin_login_url = "/admin-login"
+physics_allow_teacher_self_claim = "0"
 ```
 
 当前统一使用学校 Rocky 服务器 `tjracphy` 本机的 MiMo VL Miloco 7B，生产 API 标识为 `mimo-vl-local-prod`。普通问题直接由该模型回答；上传图片时先由同一模型提取题干、公式、图表和实验信息，再把识别文本与知识库结果交给同一模型组织最终答案。MiMo 由独立用户级 systemd 服务以 128K 上下文、4 个并行槽常驻，监听 `127.0.0.1:1237`；教研考试则由 `127.0.0.1:1236` 的 DeepSeek 独立服务处理。两个服务均不经过 LM Link，Windows 开发版通过服务器公开 API 入口调用 Rocky 本地实例。
@@ -227,6 +228,7 @@ Windows 与 Rocky 版本均已配置并启用 Tavily Search API 联网补充。�
 | `PHYSICS_WEB_SEARCH_TIMEOUT_SECONDS` | 联网搜索读取超时，默认 8 秒 |
 | `PHYSICS_WEB_SEARCH_CACHE_MINUTES` | 相同问题搜索结果缓存时间，默认 30 分钟 |
 | `PHYSICS_USER_SESSION_SECONDS` | 注册用户刷新后保持登录的时长，默认 604800 秒（7 天），允许 1 小时至 30 天 |
+| `PHYSICS_ALLOW_TEACHER_SELF_CLAIM` | 教师自助认领开关，默认 `0`；只有接入可信学校 SSO 或服务端校验的一次性邀请后才可设为 `1` |
 | `PHYSICS_API_KEY` | 模型服务密钥；无鉴权的本地服务可留空 |
 | `DASHSCOPE_API_KEY` | 兼容的 Qwen/DashScope 回退密钥 |
 | `PHYSICS_CONTEXT_WINDOW` | 模型上下文窗口预算 |
@@ -257,13 +259,13 @@ Windows 与 Rocky 版本均已配置并启用 Tavily Search API 联网补充。�
 .\agnet\enable_lan.ps1
 ```
 
-脚本只为专用网络开放统一入口 `8501`。管理员页面和十八套可视化实验均从主站内嵌访问，不再单独开放端口。其他设备访问 `http://Windows主机IP:8501`。
+脚本只为专用网络开放统一入口 `8501`。管理员页面和二十二套可视化实验均从主站内嵌访问，不再单独开放端口。其他设备访问 `http://Windows主机IP:8501`。
 
 > Edge/Chrome 只允许安全来源调用麦克风。`http://localhost:8501` 可录音，但其他电脑通过普通 HTTP IP 地址访问时，语音按钮会提示需要 HTTPS；正式局域网语音输入应在统一入口配置客户端信任的 HTTPS 证书，WebSocket 会自动使用 WSS。
 
 ## Rocky Linux 10 独立版
 
-Rocky 版已包含应用、知识库、已整理教学素材与十八套实验；用户、历史和其他运行数据仅可按受控流程另行迁移，不包含在公开源码中。它只安装在复制后的普通用户目录中：
+Rocky 版已包含应用、知识库、已整理教学素材与二十二套实验；用户、历史和其他运行数据仅可按受控流程另行迁移，不包含在公开源码中。它只安装在复制后的普通用户目录中：
 
 - 不允许使用 `sudo` 或 root 执行；
 - 不写入 `/opt`、`/etc`、`/var` 或 `/usr/local`；
@@ -272,18 +274,27 @@ Rocky 版已包含应用、知识库、已整理教学素材与十八套实验�
 
 ### 复制与安装
 
-在 Windows 项目根目录复制：
+先提交并审核待发布改动，并确认 Git LFS 已把发布目录中的大文件完整拉取。随后用
+仓库自带脚本按 Git 跟踪文件白名单生成部署包；脚本会拒绝未水合的 LFS pointer，
+也不会把本机 `assistant.db`、`config/physics-assistant.env`、`.runtime`、私有题库、
+ignored 文件或密钥打入包中：
 
 ```powershell
-scp -r ".\agent_of_college_physics" 用户名@Rocky服务器IP:~/
+git lfs pull --include="agent_of_college_physics/**"
+.\agnet\.venv\Scripts\python.exe .\tools\package_rocky_release.py --output .\rocky-physics-assistant.tar.gz
+scp .\rocky-physics-assistant.tar.gz 用户名@Rocky服务器IP:~/
 ```
 
 登录服务器后，以普通用户执行：
 
 ```bash
+tar -xzf ~/rocky-physics-assistant.tar.gz -C ~
 cd ~/agent_of_college_physics
 bash install.sh
 ```
+
+新部署无需预置数据库，安装器会建立空库并创建管理员。迁移历史数据时应另走受控的
+SQLite 在线备份流程，不要复制正在写入的数据库或其 WAL 文件。
 
 `8501` 是 Rocky 服务器内部供反向代理使用的统一上游，不作为当前校园网入口公开。当前生产环境只通过以下 HTTPS 地址访问：
 
@@ -296,7 +307,7 @@ bash install.sh
 PHYSICS_PUBLIC_BASE_URL=https://192.168.222.147:1234/agent
 ```
 
-该值用于让十八套可视化实验、Paraformer 语音服务、持久登录和管理员页面正确生成带 `/agent/` 前缀的 HTTPS/WSS 地址，并校验浏览器看到的公开端口。项目自带的 `8443` HTTPS 网关只作为独立部署时的备用方案，当前未对校园网络开放。详细要求见 [Rocky 部署说明](agent_of_college_physics/README.md)。
+该值用于让二十二套可视化实验、Paraformer 语音服务、持久登录和管理员页面正确生成带 `/agent/` 前缀的 HTTPS/WSS 地址，并校验浏览器看到的公开端口。项目自带的 `8443` HTTPS 网关只作为独立部署时的备用方案，当前未对校园网络开放。详细要求见 [Rocky 部署说明](agent_of_college_physics/README.md)。
 
 ### 服务管理
 
@@ -317,12 +328,12 @@ Rocky 版使用目录内的 Python 网关提供内部 HTTP 上游，当前由学
 | 服务 | 监听地址 |
 | --- | --- |
 | 当前校内公开入口 | `https://192.168.222.147:1234/agent/` |
-| HTTP 内部上游 | `0.0.0.0:8501`，只供服务器内部和现有反向代理使用，不对校园网络开放 |
+| HTTP 内部上游 | `127.0.0.1:8501`，只供同机反向代理使用 |
 | 备用 HTTPS/WSS 入口 | `0.0.0.0:8443`，仅在独立部署执行 `setup_https.sh` 后启用，当前校园网络未开放 |
 | Streamlit 内部服务 | `127.0.0.1:8502` |
 | 管理员内部服务 | `127.0.0.1:8603` |
 | Paraformer 语音服务 | `127.0.0.1:8604`，仅由统一入口代理 |
-| 十八套可视化实验 | 分别使用 `9384`–`9401`，仅监听 `127.0.0.1`，由统一入口代理 |
+| 二十二套可视化实验 | 分别使用 `9384`–`9405`，仅监听 `127.0.0.1`，由统一入口代理 |
 
 安装脚本不会修改防火墙。当前校园网络只需访问已有的 TCP `1234` HTTPS 反向代理；不要向校园网络开放 `8501`、`8443`、Streamlit、管理员、ASR 或实验内部端口。
 
@@ -360,7 +371,7 @@ bash agnet/install_deepseek_avx512_service.sh
 
 两条 API 都要求鉴权，无效密钥返回 HTTP 401。`lms ps` 只列出由 LM Studio llmster 管理的实例，因此看不到这两个由用户级 systemd 直接启动的常驻进程；请以 `systemctl --user status mimo-vl-avx2.service deepseek-avx512.service`、`/v1/models` 和 `/v1/slots` 为准。复杂图片定位任务建议把 MiMo 的 `--image-min-tokens` 调整为至少 `1024`。新版 LM Studio 后端已提示 `--no-mmap`、`--no-direct-io` 为兼容参数；迁移到 `--load-mode dio` 前应重新做冷启动、NUMA 内存归属和识图回归测试。
 
-Rocky 安装脚本会在用户目录中准备 Python 3.13、项目虚拟环境、Julia 1.10.10 和 Julia depot。安装阶段需要访问 Python 包源与 Julia 官方下载站；回答阶段由应用按规则调用 Tavily API，并将清洗后的结果交给本地 MiMo-VL 组织答案，模型服务自身不负责网页检索，应用也不启动独立网页爬虫。
+Rocky 安装脚本会在用户目录中准备固定并校验版本的 uv、Python 3.13、项目虚拟环境、Julia 1.10.10 和 Julia depot，并安装、预热及离线自检固定版本 Tectonic。安装阶段需要访问 Python 包源、Julia 官方下载站及 Tectonic 发布源；回答阶段由应用按规则调用 Tavily API，并将清洗后的结果交给本地 MiMo-VL 组织答案，模型服务自身不负责网页检索，应用也不启动独立网页爬虫。
 
 安装器还会从固定版本的 Sherpa-ONNX 模型仓库下载三个经过 SHA-256 校验的 Paraformer INT8 文件，总计约 226.5 MiB；不会保留 1 GiB 的完整模型归档或 FP32 文件。
 
@@ -380,6 +391,42 @@ Rocky 安装脚本会在用户目录中准备 Python 3.13、项目虚拟环境�
 - **已核验教师**：登录后先选择“智能助教”或“教研考试”。前者保持现有课程问答、识图和可视化实验；后者复用全部公共知识库，可完成命题蓝图、组卷、专项出题、参考答案、解析和评分标准。两个入口的历史记录相互隔离；
 - **匿名用户**：无需注册即可进入，消息只在当前浏览器会话中保留，也可按同样规则删除问答或手动导出 Markdown；
 - **管理员用户**：在同一登录页面验证账号后跳转管理员页面。
+
+### 教师账号发放
+
+教师自助认领默认关闭，即 `PHYSICS_ALLOW_TEACHER_SELF_CLAIM=0`。推荐由管理员先在后台导入或录入教师名册，再在受控终端交互式预配置所有尚未绑定的教师账号；账号以工号为用户名，创建后已完成教师身份绑定和审批：
+
+```powershell
+# Windows：在完整源码仓库根目录执行
+.\agnet\.venv\Scripts\python.exe .\agnet\provision_teacher_accounts.py
+```
+
+```bash
+# Rocky：在部署目录执行
+cd ~/agent_of_college_physics
+./agnet/.venv/bin/python ./agnet/provision_teacher_accounts.py
+```
+
+脚本会隐藏输入并要求二次确认初始密码，然后为本批未绑定教师设置该初始密码；各账号仍使用独立随机盐保存密码摘要。初始密码不得写进命令行、文档或日志，应通过校内受控渠道发放。
+
+不要仅因已导入教师名册就开启自助认领。只有可信学校 SSO 或一次性邀请已经接入，并能在服务端验证身份和邀请有效性时，才可将 `PHYSICS_ALLOW_TEACHER_SELF_CLAIM` 设为 `1`。开启后，名册匹配的教师也只会提交待审批申请，管理员批准前不会获得教师角色或教研考试入口。
+
+### 注册与消息存储配额
+
+以下是当前固定安全上限，不是可由环境变量放宽的运行参数。注册配额按网关确认的客户端地址哈希计数；消息容量按写入数据库的序列化内容计量：
+
+| 范围 | 当前上限 |
+| --- | --- |
+| 同一客户端注册尝试 | 10 分钟内 3 次、24 小时内 8 次 |
+| 全站注册尝试 | 10 分钟内 100 次、24 小时内 500 次 |
+| 单账号消息条目 | 每日 500 条；其中含上传附件或生成文件的消息每日 30 条 |
+| 单账号消息存储 | 每日新增 128 MiB、累计保留 512 MiB |
+| 单条消息 | 正文 512 KiB、序列化可视化数据 2 MiB |
+| 单次上传 | 最多 6 个附件，单个 20 MiB、合计 40 MiB |
+| 单条消息的考试产物 | 最多 8 个，单个 8 MiB、合计 16 MiB |
+| 全站消息存储 | 每日新增 2 GiB、累计计量 8 GiB；写入时至少保留 512 MiB 磁盘余量 |
+
+达到任一上限时，本次注册或消息保存会被拒绝并显示可操作的错误提示；匿名会话不写入服务器历史数据库。
 
 教研考试生成整套试卷前会核验学年、学期和考试名称；缺少任一项时先请教师补充，考试日期允许留空且不会由模型猜测。只有明确指定补考时标题才保留“补考”。大学物理1和大学物理A的命题范围明确排除相对论内容。整卷大题编号连续为一至七：单选、填空分别为一、二，五道计算题分别为三至七；每道计算题都有独立知识主题标题与“共10分”标记，五题主题顺序可按蓝图调整。试卷固定生成三张物理页，每页具有框外页眉、独立2pt黑色外框和双栏题面；选择题、填空题及五道计算题按标准模板显式换栏、分页，计算题之间预留学生书写空间。结构化回退还会在编译前检查各题及各栏文本预算，超长题面会被拒绝并要求精简，避免 TeX 拆页卡死。题图优先用受限 TikZ 绘制；若引用标准模板中的可信图片，服务器会把 TeX、PDF 与实际图件一并生成完整 ZIP。
 
@@ -486,7 +533,7 @@ cd ~/agent_of_college_physics
 
 首页侧栏切换到“可视化实验”后可选择：
 
-力学实验分组包含杨氏模量、转动惯量和粘滞系数测定；热学实验分组包含固体比热容、温度传感器和固体热传导系数测定；光学实验分组包含牛顿环、双棱镜干涉、薄透镜焦距和三棱镜折射率测定；近代物理实验分组包含光电效应和弗兰克-赫兹实验；其余实验按振动波动和电磁分组显示。
+力学实验分组包含杨氏模量、转动惯量和粘滞系数测定；热学实验分组包含固体比热容、温度传感器、固体热传导系数和气体 γ 常数测定；光学实验分组包含牛顿环、双棱镜干涉、薄透镜焦距、三棱镜折射率、光栅干涉、光的偏振和迈克尔逊干涉仪测波长；近代物理实验分组包含光电效应和弗兰克-赫兹实验；其余实验按振动波动和电磁分组显示。
 
 - 李萨如图形：相位差、振幅比、有理频率比和频率失谐；
 - 声速测量：回声法、双麦克风时差法、示波器相位差法和驻波法。
@@ -506,8 +553,12 @@ cd ~/agent_of_college_physics
 - 薄透镜焦距的测定：物距—像距法、自准直法、贝塞尔位移法、拟合与不确定度。
 - 三棱镜折射率测定：分光计调节、棱镜顶角测量、最小偏向角法、色散与不确定度。
 - 固体热传导系数测定：稳态导热与温度梯度、冷却散热修正、多工况拟合与不确定度。
+- 气体 γ 常数测定：绝热膨胀与等容升温、压强差读数、γ 值计算及不确定度。
+- 光栅干涉：多缝干涉、衍射角与光谱、未知波长测量和分辨本领。
+- 光的偏振研究：马吕斯定律、布儒斯特角、波片与椭圆偏振、偏振度拟合。
+- 迈克尔逊干涉仪测波长：光路调节、移镜计数、波长线性拟合和回程差。
 
-十八类实验均拆分为四个独立页面，只构建和加载当前选中的页面。最新三项路由分别为：薄透镜 `/direct`、`/autocollimation`、`/displacement`、`/uncertainty`；三棱镜 `/collimation`、`/apex`、`/minimum-deviation`、`/dispersion`；固体热传导 `/steady-state`、`/cooling`、`/fit`、`/uncertainty`。其余路由保持不变，双棱镜和牛顿环均以 `589.3 nm` 钠黄光为教学参考值。
+二十二类实验均按需构建和加载当前选中的子页面。新增四项分别使用气体 γ 常数 `/process`、`/pressure`、`/gamma`、`/uncertainty`，光栅干涉 `/principle`、`/spectrum`、`/wavelength`、`/resolution`，光的偏振 `/malus`、`/brewster`、`/waveplate`、`/fit`，迈克尔逊干涉 `/alignment`、`/counting`、`/wavelength`、`/uncertainty`。双棱镜和牛顿环均以 `589.3 nm` 钠黄光为教学参考值。
 
 弗兰克-赫兹实验的公开基路径为 `/experiments/franck-hertz`，内部服务只监听 `127.0.0.1:9394`。
 
@@ -533,11 +584,15 @@ julia --project=experiments/magnetic_hysteresis -e "using Pkg; Pkg.instantiate()
 julia --project=experiments/thin_lens_focal -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
 julia --project=experiments/prism_refractive_index -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
 julia --project=experiments/thermal_conductivity -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
+julia --project=experiments/gas_gamma -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
+julia --project=experiments/grating_interference -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
+julia --project=experiments/light_polarization -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
+julia --project=experiments/michelson_wavelength -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
 ```
 
 实验依赖清单按 Julia 1.10.10 生成。若 Juliaup 的全局默认版本较新，项目启动器会优先使用本机已安装的 `+1.10.10` 通道而不修改全局默认值；也可用 `PHYSICS_JULIA_EXE` 指定可执行文件，或用 `PHYSICS_JULIA_CHANNEL` 指定 Juliaup 通道。
 
-Rocky 目录已同步全部十八套实验。最新三项分别使用 `9399`–`9401`，经 `/experiments/thin-lens-focal`、`/experiments/prism-refractive-index` 和 `/experiments/thermal-conductivity` 代理。所有实验只使用独立回环端口，并由启动器统一完成依赖预编译、自检、进程停止和健康检查。
+Rocky 目录已同步全部二十二套实验，内部端口为 `9384`–`9405`。新增四项分别经 `/experiments/gas-gamma`、`/experiments/grating-interference`、`/experiments/light-polarization` 和 `/experiments/michelson-wavelength` 代理。所有实验只使用独立回环端口，并由启动器统一完成依赖预编译、自检、进程停止和健康检查。
 
 ## 对话内可视化
 

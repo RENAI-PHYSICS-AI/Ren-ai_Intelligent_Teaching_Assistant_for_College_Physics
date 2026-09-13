@@ -53,6 +53,14 @@ export PHYSICS_PRISM_REFRACTIVE_INDEX_PORT="${PHYSICS_PRISM_REFRACTIVE_INDEX_POR
 export PHYSICS_PRISM_REFRACTIVE_INDEX_UPSTREAM="${PHYSICS_PRISM_REFRACTIVE_INDEX_UPSTREAM:-http://127.0.0.1:$PHYSICS_PRISM_REFRACTIVE_INDEX_PORT}"
 export PHYSICS_THERMAL_CONDUCTIVITY_PORT="${PHYSICS_THERMAL_CONDUCTIVITY_PORT:-9401}"
 export PHYSICS_THERMAL_CONDUCTIVITY_UPSTREAM="${PHYSICS_THERMAL_CONDUCTIVITY_UPSTREAM:-http://127.0.0.1:$PHYSICS_THERMAL_CONDUCTIVITY_PORT}"
+export PHYSICS_GAS_GAMMA_PORT="${PHYSICS_GAS_GAMMA_PORT:-9402}"
+export PHYSICS_GAS_GAMMA_UPSTREAM="${PHYSICS_GAS_GAMMA_UPSTREAM:-http://127.0.0.1:$PHYSICS_GAS_GAMMA_PORT}"
+export PHYSICS_GRATING_INTERFERENCE_PORT="${PHYSICS_GRATING_INTERFERENCE_PORT:-9403}"
+export PHYSICS_GRATING_INTERFERENCE_UPSTREAM="${PHYSICS_GRATING_INTERFERENCE_UPSTREAM:-http://127.0.0.1:$PHYSICS_GRATING_INTERFERENCE_PORT}"
+export PHYSICS_LIGHT_POLARIZATION_PORT="${PHYSICS_LIGHT_POLARIZATION_PORT:-9404}"
+export PHYSICS_LIGHT_POLARIZATION_UPSTREAM="${PHYSICS_LIGHT_POLARIZATION_UPSTREAM:-http://127.0.0.1:$PHYSICS_LIGHT_POLARIZATION_PORT}"
+export PHYSICS_MICHELSON_WAVELENGTH_PORT="${PHYSICS_MICHELSON_WAVELENGTH_PORT:-9405}"
+export PHYSICS_MICHELSON_WAVELENGTH_UPSTREAM="${PHYSICS_MICHELSON_WAVELENGTH_UPSTREAM:-http://127.0.0.1:$PHYSICS_MICHELSON_WAVELENGTH_PORT}"
 export PHYSICS_CJK_FONT="${PHYSICS_CJK_FONT:-$RUNTIME_ROOT/fonts/NotoSansCJKsc-Regular.otf}"
 export PHYSICS_ASR_MODEL_DIR="${PHYSICS_ASR_MODEL_DIR:-$RUNTIME_ROOT/models/paraformer-zh-streaming}"
 if [[ "$PHYSICS_ASR_MODEL_DIR" != /* ]]; then
@@ -75,6 +83,10 @@ export PHYSICS_EXAM_BASE_URL="${PHYSICS_EXAM_BASE_URL:-http://127.0.0.1:1236/v1}
 export PHYSICS_EXAM_MODEL="${PHYSICS_EXAM_MODEL:-deepseek/deepseek-v4-flash-avx512}"
 export PHYSICS_MODEL_STARTUP_TIMEOUT_SECONDS="${PHYSICS_MODEL_STARTUP_TIMEOUT_SECONDS:-1800}"
 export PHYSICS_USE_LEGACY_LM_STUDIO="${PHYSICS_USE_LEGACY_LM_STUDIO:-0}"
+# The plaintext gateway is always a same-host reverse-proxy upstream.  HTTPS has
+# a separate bind address so enabling it never re-exposes port 8501.
+export PHYSICS_GATEWAY_HOST="127.0.0.1"
+export PHYSICS_GATEWAY_HTTPS_HOST="${PHYSICS_GATEWAY_HTTPS_HOST:-127.0.0.1}"
 export PHYSICS_GATEWAY_HTTPS_PORT="${PHYSICS_GATEWAY_HTTPS_PORT:-}"
 export PHYSICS_GATEWAY_TLS_CERT="${PHYSICS_GATEWAY_TLS_CERT:-$APP_ROOT/config/tls/server.crt}"
 export PHYSICS_GATEWAY_TLS_KEY="${PHYSICS_GATEWAY_TLS_KEY:-$APP_ROOT/config/tls/server.key}"
@@ -114,6 +126,11 @@ start_one() {
   echo "$name 已启动（PID $(cat "$PID_DIR/$name.pid")）"
 }
 
+run_db_migrations() {
+  echo "正在串行执行 SQLite 迁移……"
+  "$PYTHON" "$APP_ROOT/agnet/migrate_db.py"
+}
+
 wait_url() {
   local url="$1" label="$2"
   for _ in {1..60}; do
@@ -132,6 +149,18 @@ wait_https_url() {
   done
   echo "$label 健康检查超时：$url" >&2
   return 1
+}
+
+https_probe_host_for_bind() {
+  local bind_host="${1:-}"
+  bind_host="${bind_host#\[}"
+  bind_host="${bind_host%\]}"
+  case "$bind_host" in
+    ""|0.0.0.0) printf '%s' "127.0.0.1" ;;
+    ::) printf '%s' "[::1]" ;;
+    *:*) printf '[%s]' "$bind_host" ;;
+    *) printf '%s' "$bind_host" ;;
+  esac
 }
 
 model_api_ready() {
@@ -357,6 +386,7 @@ ensure_model_apis() {
 
 start_all() {
   [[ -x "$PYTHON" ]] || { echo "尚未安装，请先执行 bash install.sh" >&2; return 1; }
+  run_db_migrations
   ensure_model_apis
   start_one admin "$PYTHON" -m uvicorn admin_api:app \
     --host 127.0.0.1 --port 8603 --proxy-headers --forwarded-allow-ips=127.0.0.1
@@ -369,10 +399,12 @@ start_all() {
   wait_url http://127.0.0.1:8603/health "管理员服务"
   wait_url http://127.0.0.1:"$PHYSICS_ASR_PORT"/health "Paraformer 语音服务"
   wait_url http://127.0.0.1:8502/_stcore/health "智能助教"
-  start_one gateway env PHYSICS_GATEWAY_TLS_CERT= PHYSICS_GATEWAY_TLS_KEY= \
+  start_one gateway env PHYSICS_GATEWAY_HOST=127.0.0.1 \
+    PHYSICS_GATEWAY_TLS_CERT= PHYSICS_GATEWAY_TLS_KEY= \
     "$PYTHON" gateway.py
   wait_url http://127.0.0.1:8501/_stcore/health "8501 统一入口"
   if [[ -n "$PHYSICS_GATEWAY_HTTPS_PORT" ]]; then
+    local https_probe_host
     [[ -r "$PHYSICS_GATEWAY_TLS_CERT" ]] || {
       echo "HTTPS 证书不可读：$PHYSICS_GATEWAY_TLS_CERT" >&2
       return 1
@@ -382,10 +414,12 @@ start_all() {
       return 1
     }
     start_one gateway_https env \
+      PHYSICS_GATEWAY_HOST="$PHYSICS_GATEWAY_HTTPS_HOST" \
       PHYSICS_GATEWAY_PORT="$PHYSICS_GATEWAY_HTTPS_PORT" \
       "$PYTHON" gateway.py
+    https_probe_host="$(https_probe_host_for_bind "$PHYSICS_GATEWAY_HTTPS_HOST")"
     wait_https_url \
-      "https://127.0.0.1:$PHYSICS_GATEWAY_HTTPS_PORT$PHYSICS_GATEWAY_PUBLIC_PREFIX/_stcore/health" \
+      "https://$https_probe_host:$PHYSICS_GATEWAY_HTTPS_PORT$PHYSICS_GATEWAY_PUBLIC_PREFIX/_stcore/health" \
       "$PHYSICS_GATEWAY_HTTPS_PORT HTTPS 统一入口"
   fi
 }
@@ -417,7 +451,7 @@ experiment_pids() {
     pid="${proc_dir##*/}"
     command="$(tr '\0' ' ' <"$proc_dir/cmdline" 2>/dev/null || true)"
     case "$command" in
-      *"$APP_ROOT/agnet/experiments/lissajous/web.jl"*|*"$APP_ROOT/agnet/experiments/sound_speed/web.jl"*|*"$APP_ROOT/agnet/experiments/electron_em/web.jl"*|*"$APP_ROOT/agnet/experiments/photoelectric/web.jl"*|*"$APP_ROOT/agnet/experiments/biprism/web.jl"*|*"$APP_ROOT/agnet/experiments/newton_rings/web.jl"*|*"$APP_ROOT/agnet/experiments/young_modulus/web.jl"*|*"$APP_ROOT/agnet/experiments/rotational_inertia/web.jl"*|*"$APP_ROOT/agnet/experiments/viscosity/web.jl"*|*"$APP_ROOT/agnet/experiments/specific_heat/web.jl"*|*"$APP_ROOT/agnet/experiments/franck_hertz/web.jl"*|*"$APP_ROOT/agnet/experiments/temperature_sensor/web.jl"*|*"$APP_ROOT/agnet/experiments/wheatstone_bridge/web.jl"*|*"$APP_ROOT/agnet/experiments/hall_effect/web.jl"*|*"$APP_ROOT/agnet/experiments/magnetic_hysteresis/web.jl"*|*"$APP_ROOT/agnet/experiments/thin_lens_focal/web.jl"*|*"$APP_ROOT/agnet/experiments/prism_refractive_index/web.jl"*|*"$APP_ROOT/agnet/experiments/thermal_conductivity/web.jl"*)
+      *"$APP_ROOT/agnet/experiments/lissajous/web.jl"*|*"$APP_ROOT/agnet/experiments/sound_speed/web.jl"*|*"$APP_ROOT/agnet/experiments/electron_em/web.jl"*|*"$APP_ROOT/agnet/experiments/photoelectric/web.jl"*|*"$APP_ROOT/agnet/experiments/biprism/web.jl"*|*"$APP_ROOT/agnet/experiments/newton_rings/web.jl"*|*"$APP_ROOT/agnet/experiments/young_modulus/web.jl"*|*"$APP_ROOT/agnet/experiments/rotational_inertia/web.jl"*|*"$APP_ROOT/agnet/experiments/viscosity/web.jl"*|*"$APP_ROOT/agnet/experiments/specific_heat/web.jl"*|*"$APP_ROOT/agnet/experiments/franck_hertz/web.jl"*|*"$APP_ROOT/agnet/experiments/temperature_sensor/web.jl"*|*"$APP_ROOT/agnet/experiments/wheatstone_bridge/web.jl"*|*"$APP_ROOT/agnet/experiments/hall_effect/web.jl"*|*"$APP_ROOT/agnet/experiments/magnetic_hysteresis/web.jl"*|*"$APP_ROOT/agnet/experiments/thin_lens_focal/web.jl"*|*"$APP_ROOT/agnet/experiments/prism_refractive_index/web.jl"*|*"$APP_ROOT/agnet/experiments/thermal_conductivity/web.jl"*|*"$APP_ROOT/agnet/experiments/gas_gamma/web.jl"*|*"$APP_ROOT/agnet/experiments/grating_interference/web.jl"*|*"$APP_ROOT/agnet/experiments/light_polarization/web.jl"*|*"$APP_ROOT/agnet/experiments/michelson_wavelength/web.jl"*)
         printf '%s\n' "$pid"
         ;;
     esac
@@ -675,6 +709,10 @@ check_all() {
   check_experiment_if_running \
     "固体热传导系数" "$PHYSICS_THERMAL_CONDUCTIVITY_PORT" \
     "thermal-conductivity" "physics-experiment:thermal-conductivity"
+  check_experiment_if_running "气体γ常数" "$PHYSICS_GAS_GAMMA_PORT" "gas-gamma" "physics-experiment:gas-gamma"
+  check_experiment_if_running "光栅干涉" "$PHYSICS_GRATING_INTERFERENCE_PORT" "grating-interference" "physics-experiment:grating-interference"
+  check_experiment_if_running "光的偏振" "$PHYSICS_LIGHT_POLARIZATION_PORT" "light-polarization" "physics-experiment:light-polarization"
+  check_experiment_if_running "迈克尔逊干涉仪" "$PHYSICS_MICHELSON_WAVELENGTH_PORT" "michelson-wavelength" "physics-experiment:michelson-wavelength"
   if [[ -n "$PHYSICS_GATEWAY_HTTPS_PORT" ]]; then
     curl --insecure --fail --silent --show-error \
       "https://127.0.0.1:$PHYSICS_GATEWAY_HTTPS_PORT$PHYSICS_GATEWAY_PUBLIC_PREFIX/asr/health"

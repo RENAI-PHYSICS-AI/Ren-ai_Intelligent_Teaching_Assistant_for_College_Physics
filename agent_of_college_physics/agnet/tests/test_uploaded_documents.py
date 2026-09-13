@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -7,7 +8,9 @@ from unittest.mock import patch
 import uploaded_documents
 
 
-PNG = b"\x89PNG\r\n\x1a\nmock"
+PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+)
 PDF = b"%PDF-1.7\nmock"
 
 
@@ -47,12 +50,17 @@ class UploadedDocumentTests(unittest.TestCase):
         self.assertEqual(result.warnings, ())
 
     @patch.object(uploaded_documents, "PdfReader")
-    def test_known_passwords_are_tried_for_encrypted_pdf(self, reader) -> None:
+    @patch.dict(
+        "os.environ",
+        {"PHYSICS_PDF_PASSWORDS": "wrong, correct-secret", "PHYSICS_EXAM_SOURCE_PASSWORDS": ""},
+        clear=False,
+    )
+    def test_configured_passwords_are_tried_for_encrypted_pdf(self, reader) -> None:
         attempts: list[str] = []
 
         def decrypt(password: str) -> int:
             attempts.append(password)
-            return 1 if password == "505505" else 0
+            return 1 if password == "correct-secret" else 0
 
         reader.return_value = SimpleNamespace(
             is_encrypted=True,
@@ -60,10 +68,26 @@ class UploadedDocumentTests(unittest.TestCase):
             pages=[_Page("加密试卷")],
         )
         pages, password, count = uploaded_documents._extract_pdf_pages(PDF)
-        self.assertEqual(password, "505505")
-        self.assertEqual(attempts, ["", "410410", "505505"])
+        self.assertEqual(password, "correct-secret")
+        self.assertEqual(attempts, ["", "wrong", "correct-secret"])
         self.assertEqual(pages, ["加密试卷"])
         self.assertEqual(count, 1)
+
+    @patch.dict(
+        "os.environ",
+        {"PHYSICS_PDF_PASSWORDS": "do-not-echo", "PHYSICS_EXAM_SOURCE_PASSWORDS": ""},
+        clear=False,
+    )
+    @patch.object(uploaded_documents, "PdfReader")
+    def test_pdf_password_failure_does_not_echo_secret(self, reader) -> None:
+        reader.return_value = SimpleNamespace(
+            is_encrypted=True,
+            decrypt=lambda _password: 0,
+            pages=[],
+        )
+        with self.assertRaisesRegex(ValueError, "本地配置的口令无法解锁") as caught:
+            uploaded_documents._extract_pdf_pages(PDF)
+        self.assertNotIn("do-not-echo", str(caught.exception))
 
     @patch.object(uploaded_documents, "_render_pdf_pages", return_value=[])
     @patch.object(uploaded_documents, "PdfReader")
@@ -75,6 +99,31 @@ class UploadedDocumentTests(unittest.TestCase):
         self.assertFalse(result.context)
         self.assertTrue(any("未提取到可用文字" in item for item in result.warnings))
         self.assertTrue(any("无法渲染页面图" in item for item in result.warnings))
+
+    @patch.object(uploaded_documents, "PdfReader")
+    def test_oversized_pdf_page_is_rejected_before_rendering(self, reader) -> None:
+        page = _Page("异常页面")
+        page.mediabox = SimpleNamespace(width=50_000, height=50_000)
+        reader.return_value = SimpleNamespace(is_encrypted=False, pages=[page])
+        with self.assertRaisesRegex(ValueError, "尺寸异常"):
+            uploaded_documents._extract_pdf_pages(PDF)
+
+    @patch.object(uploaded_documents, "_render_pdf_pages", return_value=[])
+    @patch.object(uploaded_documents, "PdfReader")
+    def test_multiple_pdfs_share_one_bundle_page_budget(self, reader, _render) -> None:
+        reader.return_value = SimpleNamespace(
+            is_encrypted=False,
+            pages=[_Page("第一页"), _Page("第二页")],
+        )
+        attachments = [
+            {"name": f"试卷{index}.pdf", "mime": "application/pdf", "data": PDF}
+            for index in range(3)
+        ]
+        with patch.object(uploaded_documents, "MAX_BUNDLE_PDF_PAGES", 3):
+            result = uploaded_documents.prepare_uploaded_documents(attachments)
+        self.assertIn("试卷0.pdf", result.context)
+        self.assertIn("试卷1.pdf", result.context)
+        self.assertTrue(any("总页数" in item for item in result.warnings))
 
 
 if __name__ == "__main__":

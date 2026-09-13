@@ -1,0 +1,133 @@
+[
+  {
+    "id": "light_polarization-01",
+    "authors": [
+      "Étienne-Louis Malus"
+    ],
+    "year": 1809,
+    "title": "Sur une propriété de la lumière réfléchie",
+    "publisher": "Mémoires de la Société d'Arcueil",
+    "type": "核心题录",
+    "topic": "马吕斯定律原始工作",
+    "url": "https://gallica.bnf.fr/",
+    "local_file": null
+  },
+  {
+    "id": "light_polarization-02",
+    "authors": [
+      "David Brewster"
+    ],
+    "year": 1815,
+    "title": "On the Laws which Regulate the Polarisation of Light by Reflexion from Transparent Bodies",
+    "publisher": "Philosophical Transactions",
+    "type": "核心题录",
+    "topic": "布儒斯特定律经典论文",
+    "url": "https://doi.org/10.1098/rstl.1815.0010",
+    "local_file": null
+  },
+  {
+    "id": "light_polarization-03",
+    "authors": [
+      "Augustin-Jean Fresnel"
+    ],
+    "year": 1823,
+    "title": "Mémoire sur la double réfraction",
+    "publisher": "Académie des Sciences",
+    "type": "核心题录",
+    "topic": "椭圆偏振与双折射",
+    "url": "https://gallica.bnf.fr/",
+    "local_file": null
+  },
+  {
+    "id": "light_polarization-04",
+    "authors": [
+      "Ioan Damian"
+    ],
+    "year": 2006,
+    "title": "Malus' Law for a Real Polarizer",
+    "publisher": "European Journal of Physics",
+    "type": "开放全文",
+    "topic": "实际偏振片修正",
+    "url": "https://arxiv.org/abs/physics/0604073",
+    "local_file": "ref/Damian_2006_Real_Polarizer.pdf"
+  },
+  {
+    "id": "light_polarization-05",
+    "authors": [
+      "M. Monteiro et al."
+    ],
+    "year": 2016,
+    "title": "The Polarization of Light and Malus' Law Using Smartphones",
+    "publisher": "The Physics Teacher",
+    "type": "开放全文",
+    "topic": "智能手机定量实验",
+    "url": "https://arxiv.org/abs/1607.02659",
+    "local_file": "ref/Monteiro_2016_Smartphone_Malus.pdf"
+  },
+  {
+    "id": "light_polarization-06",
+    "authors": [
+      "D. Amrani",
+      "P. Paradis"
+    ],
+    "year": 2009,
+    "title": "Malus's Law of Light Polarization Using a Computer-Based Laboratory",
+    "publisher": "Latin-American Journal of Physics Education",
+    "type": "核心题录",
+    "topic": "自动采集与拟合",
+    "url": "https://dialnet.unirioja.es/descarga/articulo/3689839.pdf",
+    "local_file": null
+  },
+  {
+    "id": "light_polarization-07",
+    "authors": [
+      "University of Central Florida"
+    ],
+    "year": 2018,
+    "title": "Photonics Lab Manual: Polarization",
+    "publisher": "CREOL",
+    "type": "核心题录",
+    "topic": "激光安全与马吕斯定律",
+    "url": "https://photonics.creol.ucf.edu/wp-content/uploads/sites/4/2019/06/Photonics_Lab_Manual_for_High_Schools_2018.pdf",
+    "local_file": null
+  },
+  {
+    "id": "light_polarization-08",
+    "authors": [
+      "University of Tennessee"
+    ],
+    "year": 2025,
+    "title": "Polarization and Birefringence Laboratory",
+    "publisher": "UTK",
+    "type": "核心题录",
+    "topic": "布儒斯特角和双折射",
+    "url": "https://labs.phys.utk.edu/mbreinig/phys421/labs/Lab10.html",
+    "local_file": null
+  },
+  {
+    "id": "light_polarization-09",
+    "authors": [
+      "R. C. Jones"
+    ],
+    "year": 1941,
+    "title": "A New Calculus for the Treatment of Optical Systems",
+    "publisher": "JOSA",
+    "type": "核心题录",
+    "topic": "琼斯矩阵经典工作",
+    "url": "https://doi.org/10.1364/JOSA.31.000488",
+    "local_file": null
+  },
+  {
+    "id": "light_polarization-10",
+    "authors": [
+      "JCGM"
+    ],
+    "year": 2008,
+    "title": "Guide to the Expression of Uncertainty in Measurement",
+    "publisher": "BIPM",
+    "type": "核心题录",
+    "topic": "光强拟合不确定度",
+    "url": "https://doi.org/10.59161/JCGM100-2008E",
+    "local_file": null
+  }
+]

@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import secrets
 import time
+from collections.abc import Mapping
 
 
 def load_or_create_local_secret(path: str | Path) -> str:
@@ -38,7 +39,13 @@ def _decode(value: str) -> bytes:
     return base64.urlsafe_b64decode((value + padding).encode("ascii"))
 
 
-def issue_token(secret: str, username: str, purpose: str, ttl_seconds: int) -> str:
+def issue_token(
+    secret: str,
+    username: str,
+    purpose: str,
+    ttl_seconds: int,
+    claims: Mapping | None = None,
+) -> str:
     if not secret:
         raise ValueError("Administrator secret is not configured.")
     now = int(time.time())
@@ -49,6 +56,9 @@ def issue_token(secret: str, username: str, purpose: str, ttl_seconds: int) -> s
         "exp": now + int(ttl_seconds),
         "nonce": secrets.token_urlsafe(18),
     }
+    if claims:
+        reserved = {"sub", "purpose", "iat", "exp", "nonce"}
+        payload.update({key: value for key, value in claims.items() if key not in reserved})
     encoded = _encode(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
     signature = hmac.new(secret.encode("utf-8"), encoded.encode("ascii"), hashlib.sha256).digest()
     return f"{encoded}.{_encode(signature)}"

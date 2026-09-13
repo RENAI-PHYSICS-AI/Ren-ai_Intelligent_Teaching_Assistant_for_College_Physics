@@ -1,0 +1,12 @@
+{
+  "topic": "气体γ常数测定",
+  "routes": [
+    "process",
+    "pressure",
+    "gamma",
+    "uncertainty"
+  ],
+  "core_reference_count": 10,
+  "local_pdf_count": 2,
+  "method": "Clément-Desormes 快速绝热膨胀与等容回温法"
+}

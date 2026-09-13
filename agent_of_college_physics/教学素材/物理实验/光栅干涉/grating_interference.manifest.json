@@ -1,0 +1,62 @@
+{
+  "created_at": "2026-08-30T23:25:03.751191+08:00",
+  "topic": "光栅干涉",
+  "method": "夫琅禾费多缝干涉、光栅方程与分光计测角",
+  "measured_quantity": "光栅常数 d、谱线波长 λ、角色散与分辨本领 R",
+  "routes": [
+    "principle",
+    "spectrum",
+    "wavelength",
+    "resolution"
+  ],
+  "core_references": 10,
+  "documents": 5,
+  "pdf_documents": 1,
+  "chunks": 22,
+  "output": "agnet/knowledge_base/imports/grating_interference.jsonl",
+  "main_knowledge_base_modified": false,
+  "sources": [
+    {
+      "source": "光栅干涉文献导读.md",
+      "source_path": "教学素材/物理实验/光栅干涉/光栅干涉文献导读.md",
+      "source_type": "markdown",
+      "chunks": 1
+    },
+    {
+      "source": "光栅干涉可视化实验方案.md",
+      "source_path": "教学素材/物理实验/光栅干涉/光栅干涉可视化实验方案.md",
+      "source_type": "markdown",
+      "chunks": 1
+    },
+    {
+      "source": "README.md",
+      "source_path": "教学素材/物理实验/光栅干涉/ref/README.md",
+      "source_type": "markdown",
+      "chunks": 2
+    },
+    {
+      "source": "sources.json",
+      "source_path": "教学素材/物理实验/光栅干涉/sources.json",
+      "source_type": "reference_metadata",
+      "references": 10,
+      "chunks": 10
+    },
+    {
+      "source": "MIT_Holographic_Imaging_Grating.pdf",
+      "source_path": "教学素材/物理实验/光栅干涉/ref/MIT_Holographic_Imaging_Grating.pdf",
+      "source_type": "pdf",
+      "url": "https://ocw.mit.edu/courses/mas-450-holographic-imaging-spring-2003/resources/lab3/",
+      "bytes": 14376,
+      "sha256": "038487431baf2aa49b96026a6e39d14635a4f6d77ae811badeb7f7b2e567bb01",
+      "pdf_signature": "%PDF-",
+      "pages": 1,
+      "selected_pages": [
+        1
+      ],
+      "empty_pages": [],
+      "text_layer_pages": 1,
+      "chunks": 8,
+      "ocr_recommended": false
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "topic": "迈克尔逊干涉仪测波长",
+  "routes": [
+    "alignment",
+    "counting",
+    "wavelength",
+    "uncertainty"
+  ],
+  "core_reference_count": 10,
+  "local_pdf_count": 3,
+  "method": "分振幅双光束干涉、移镜计数与位移-条纹数线性拟合"
+}

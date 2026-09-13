@@ -54,6 +54,79 @@ class InstitutionalLoginAliasTests(unittest.TestCase):
         self.assertEqual(storage.authenticate("DiGuo", "correct-password"), expected)
         self.assertEqual(storage.authenticate("243120", "correct-password"), expected)
 
+    def test_teacher_claim_waits_for_admin_approval(self) -> None:
+        self.assertEqual(self.account["role"], "student")
+        self.assertEqual(self.account["teacher_approval_status"], "pending")
+        self.assertEqual(
+            [row["id"] for row in analytics_db.get_pending_teacher_approvals()],
+            [self.account["id"]],
+        )
+
+        approved = analytics_db.review_teacher_approval(
+            self.account["id"], "approve"
+        )
+
+        self.assertEqual(approved["role"], "teacher")
+        self.assertEqual(approved["teacher_approval_status"], "approved")
+        self.assertEqual(analytics_db.get_pending_teacher_approvals(), [])
+
+    def test_rejected_teacher_claim_keeps_student_permissions(self) -> None:
+        rejected = analytics_db.review_teacher_approval(
+            self.account["id"], "reject"
+        )
+
+        self.assertEqual(rejected["role"], "student")
+        self.assertEqual(rejected["teacher_approval_status"], "rejected")
+        self.assertEqual(rejected["session_version"], 2)
+        self.assertFalse(rejected["identity_verified"])
+
+        rebound = analytics_db.bind_user_identity(
+            self.account["id"],
+            "teacher",
+            "243120",
+            "郭棣",
+            allow_teacher_claim=True,
+        )
+        self.assertEqual(rebound["teacher_approval_status"], "pending")
+        approved = analytics_db.review_teacher_approval(self.account["id"], "approve")
+        self.assertEqual(approved["role"], "teacher")
+
+    def test_existing_teacher_account_is_grandfathered_on_migration(self) -> None:
+        connection = sqlite3.connect(self.db_path)
+        connection.execute(
+            """UPDATE users SET role='teacher', teacher_approval_status='not_required'
+               WHERE id=?""",
+            (self.account["id"],),
+        )
+        connection.commit()
+        connection.close()
+
+        analytics_db.init_db()
+
+        migrated = analytics_db.get_user_by_id(self.account["id"])
+        self.assertEqual(migrated["role"], "teacher")
+        self.assertEqual(migrated["teacher_approval_status"], "approved")
+
+    def test_storage_only_initialization_applies_teacher_migration(self) -> None:
+        connection = sqlite3.connect(self.db_path)
+        connection.execute(
+            """UPDATE users SET role='teacher', teacher_approval_status='not_required'
+               WHERE id=?""",
+            (self.account["id"],),
+        )
+        connection.commit()
+        connection.close()
+
+        storage.init_db()
+
+        connection = sqlite3.connect(self.db_path)
+        status = connection.execute(
+            "SELECT teacher_approval_status FROM users WHERE id=?",
+            (self.account["id"],),
+        ).fetchone()[0]
+        connection.close()
+        self.assertEqual(status, "approved")
+
     def test_admin_authentication_accepts_employee_id_alias(self) -> None:
         account = analytics_db.authenticate_user("243120", "correct-password")
         self.assertIsNotNone(account)
@@ -136,6 +209,11 @@ class InstitutionalLoginAliasTests(unittest.TestCase):
             self.assertEqual(
                 storage.authenticate(account["institutional_id"], "shared-password"),
                 (account["user_id"], account["username"]),
+            )
+            provisioned = analytics_db.get_user_by_id(account["user_id"])
+            self.assertEqual(provisioned["role"], "teacher")
+            self.assertEqual(
+                provisioned["teacher_approval_status"], "approved"
             )
 
         connection = sqlite3.connect(self.db_path)

@@ -1,0 +1,77 @@
+[
+  {
+    "source": "气体γ常数测定文献导读.md",
+    "source_path": "教学素材/物理实验/气体gamma常数测定/气体γ常数测定文献导读.md",
+    "source_type": "markdown",
+    "chunks": 1
+  },
+  {
+    "source": "气体γ常数测定可视化实验方案.md",
+    "source_path": "教学素材/物理实验/气体gamma常数测定/气体γ常数测定可视化实验方案.md",
+    "source_type": "markdown",
+    "chunks": 1
+  },
+  {
+    "source": "README.md",
+    "source_path": "教学素材/物理实验/气体gamma常数测定/ref/README.md",
+    "source_type": "markdown",
+    "chunks": 2
+  },
+  {
+    "source": "sources.json",
+    "source_path": "教学素材/物理实验/气体gamma常数测定/sources.json",
+    "source_type": "reference_metadata",
+    "references": 10,
+    "chunks": 10
+  },
+  {
+    "source": "UZH_Clement_Desormes.pdf",
+    "source_path": "教学素材/物理实验/气体gamma常数测定/ref/UZH_Clement_Desormes.pdf",
+    "source_type": "pdf",
+    "url": "https://www.physik.uzh.ch/~matthias/espace-assistant/manuals/en/anleitung-cd_e.pdf",
+    "bytes": 662844,
+    "sha256": "d7840b5205285817d4483dd566b2d500ffa3e4ffb694a246f810d1619022e756",
+    "pdf_signature": "%PDF-",
+    "pages": 13,
+    "selected_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13
+    ],
+    "empty_pages": [],
+    "text_layer_pages": 13,
+    "chunks": 37,
+    "ocr_recommended": false
+  },
+  {
+    "source": "Gdansk_Specific_Heat_Ratio.pdf",
+    "source_path": "教学素材/物理实验/气体gamma常数测定/ref/Gdansk_Specific_Heat_Ratio.pdf",
+    "source_type": "pdf",
+    "url": "",
+    "bytes": 80633,
+    "sha256": "dfd5bb81e418a764f8f85328bf1aee735e84369621fda2f619f7b5c11b067325",
+    "pdf_signature": "%PDF-",
+    "pages": 5,
+    "selected_pages": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "empty_pages": [],
+    "text_layer_pages": 5,
+    "chunks": 11,
+    "ocr_recommended": false
+  }
+]

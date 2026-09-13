@@ -31,6 +31,7 @@ from config import (
     TEACHER_EXAM_KB_MANIFEST_FILE,
     TEACHER_EXAM_MATERIALS_DIR,
     TEACHER_EXAM_TEMPLATE_FILE,
+    setting,
 )
 
 PRIVATE_SOURCE_TYPE = "教师专用·教研考试"
@@ -56,9 +57,6 @@ _KNOWN_PENDING_REVIEW = (
     "试卷/2025-2026-2/大物A/answer.tex",
     "试卷/LaTeX题库/Chap2_Dynamics.tex",
 )
-_DEFAULT_SOURCE_PASSWORDS = ("410410", "505505")
-
-
 def _inside(path: Path, root: Path) -> bool:
     try:
         path.resolve().relative_to(root.resolve())
@@ -91,13 +89,13 @@ def _relative(path: Path, root: Path, *, archive_prefix: str = "") -> str:
 
 
 def _passwords() -> tuple[str, ...]:
-    """Return automatic corpus passwords plus optional local overrides."""
-    raw = os.getenv("PHYSICS_EXAM_SOURCE_PASSWORDS", "")
-    result: list[str] = list(_DEFAULT_SOURCE_PASSWORDS)
-    for value in re.split(r"[,，;；\r\n]+", raw):
-        value = value.strip()
-        if value and value not in result:
-            result.append(value)
+    """Return corpus passwords from private environment/Streamlit settings."""
+    result: list[str] = []
+    for name in ("PHYSICS_EXAM_SOURCE_PASSWORDS", "PHYSICS_PDF_PASSWORDS"):
+        for value in re.split(r"[,，;；\r\n]+", setting(name, "")):
+            value = value.strip()
+            if value and value not in result:
+                result.append(value)
     return tuple(result)
 
 
