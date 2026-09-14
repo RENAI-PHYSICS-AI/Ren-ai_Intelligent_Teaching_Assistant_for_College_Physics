@@ -58,7 +58,10 @@ class ExamKnowledgePolicyTests(unittest.TestCase):
         # Deployment supplies these private files; a clean checkout must test
         # their configured resolution without requiring real exam materials.
         with tempfile.TemporaryDirectory() as temporary:
-            exam_root = Path(temporary) / "restricted-exams"
+            # Exercise canonicalization even on hosts without Windows 8.3 names.
+            alias = Path(temporary) / "path-alias"
+            alias.mkdir()
+            exam_root = alias / ".." / "restricted-exams"
             fixtures = {
                 "TEACHER_EXAM_TEMPLATE_FILE": (
                     teacher_exam.DEFAULT_EXAM_TEMPLATE_RELATIVE_PATH,
@@ -74,13 +77,13 @@ class ExamKnowledgePolicyTests(unittest.TestCase):
                 path = exam_root / Path(relative).relative_to("考试素材")
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(content, encoding="utf-8")
-                expected_paths[key] = path
+                expected_paths[key] = path.resolve()
             with patch.dict(
                 "os.environ", {"PHYSICS_EXAM_MATERIALS_DIR": str(exam_root)}
             ):
                 configured = runpy.run_path(str(APP_DIR / "config.py"))
-            self.assertEqual(configured["EXAM_MATERIALS_DIR"], exam_root)
-            self.assertIn(exam_root, configured["TEACHER_EXAM_SOURCE_DIRS"])
+            self.assertEqual(configured["EXAM_MATERIALS_DIR"], exam_root.resolve())
+            self.assertIn(exam_root.resolve(), configured["TEACHER_EXAM_SOURCE_DIRS"])
             for key, path in expected_paths.items():
                 with self.subTest(setting=key):
                     self.assertEqual(configured[key], path)
