@@ -11,6 +11,8 @@ if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
 fi
 
 APP_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=agnet/launcher_paths.sh
+source "$APP_ROOT/agnet/launcher_paths.sh"
 RUNTIME_ROOT="$APP_ROOT/.runtime"
 CONFIG_ROOT="$APP_ROOT/config"
 CONFIG_FILE="$CONFIG_ROOT/physics-assistant.env"
@@ -20,6 +22,7 @@ if [[ -f "$CONFIG_FILE" ]]; then
   source "$CONFIG_FILE"
   set +a
 fi
+physics_resolve_launcher_paths "$APP_ROOT"
 JULIA_VERSION="${JULIA_VERSION:-1.10.10}"
 PYTHON_VERSION="${PYTHON_VERSION:-3.13}"
 UV_VERSION="0.12.5"
@@ -179,7 +182,8 @@ if [[ ! -x "$JULIA_BIN" ]]; then
   cleanup
   trap - EXIT
 fi
-ln -sfn "$JULIA_BIN" "$RUNTIME_ROOT/bin/julia"
+# Keep the bundled runtime usable when the complete release directory moves.
+ln -sfn "../julia-${JULIA_VERSION}/bin/julia" "$RUNTIME_ROOT/bin/julia"
 
 echo "[6/9] 创建用户级运行配置……"
 if [[ ! -f "$CONFIG_FILE" ]]; then
@@ -199,6 +203,7 @@ set -a
 # shellcheck disable=SC1090
 source "$CONFIG_FILE"
 set +a
+physics_resolve_launcher_paths "$APP_ROOT"
 [[ -f "$APP_ROOT/agnet/data/admin_signing_secret" ]] && \
   chmod 600 "$APP_ROOT/agnet/data/admin_signing_secret"
 
@@ -207,7 +212,7 @@ database="$APP_ROOT/agnet/data/assistant.db"
 env PYTHONPATH="$APP_ROOT/agnet" \
   "$APP_ROOT/agnet/.venv/bin/python" "$APP_ROOT/agnet/migrate_db.py"
 chmod 600 "$database"
-has_admin="$($APP_ROOT/agnet/.venv/bin/python -c '
+has_admin="$("$APP_ROOT/agnet/.venv/bin/python" -c '
 import sqlite3, sys
 try:
     with sqlite3.connect(sys.argv[1]) as db:

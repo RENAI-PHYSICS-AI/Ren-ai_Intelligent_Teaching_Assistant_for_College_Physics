@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fail when the Windows runtime and Rocky release snapshot drift apart.
 
-Shared runtime/build Python, Julia implementations, and Julia dependency files
+Shared runtime/build Python, launch scripts, Julia implementations, and dependency files
 must stay semantically identical.  Only the explicitly listed source-only
 importers may be absent from the Rocky release snapshot.
 """
@@ -26,14 +26,18 @@ PRIMARY_ONLY_BUILD_FILES = frozenset(
     }
 )
 JULIA_DEPENDENCY_FILES = frozenset({"Project.toml", "Manifest.toml"})
+SHARED_LAUNCHER_SUFFIXES = (".sh", ".service", ".env.example")
 
 
 def _runtime_files(root: Path) -> dict[Path, Path]:
     files: dict[Path, Path] = {}
-    for path in root.glob("*.py"):
-        if path.name in PRIMARY_ONLY_BUILD_FILES:
+    if not root.is_dir():
+        return files
+    for path in root.iterdir():
+        if not path.is_file() or path.name in PRIMARY_ONLY_BUILD_FILES:
             continue
-        files[path.relative_to(root)] = path
+        if path.suffix == ".py" or path.name.endswith(SHARED_LAUNCHER_SUFFIXES):
+            files[path.relative_to(root)] = path
     for path in (root / "experiments").rglob("*"):
         if path.is_file() and (
             path.suffix == ".jl" or path.name in JULIA_DEPENDENCY_FILES

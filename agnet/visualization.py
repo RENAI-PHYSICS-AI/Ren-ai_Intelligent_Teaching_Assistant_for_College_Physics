@@ -18,6 +18,8 @@ import plotly.graph_objects as go
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
 
+from config import resolve_app_path
+
 
 _VIZ_PATTERN = re.compile(r"<!--\s*PHYSICS_VIZ:(.*?)-->", re.DOTALL)
 _FUNCTIONS = {
@@ -54,7 +56,7 @@ def _cjk_font_path() -> Path | None:
     configured = os.getenv("PHYSICS_CJK_FONT", "").strip()
     windows_root = os.getenv("WINDIR", "").strip()
     candidates = [
-        Path(configured).expanduser() if configured else None,
+        resolve_app_path(configured) if configured else None,
         Path(windows_root) / "Fonts" / "msyh.ttc" if windows_root else None,
         Path("/System/Library/Fonts/PingFang.ttc"),
         Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),

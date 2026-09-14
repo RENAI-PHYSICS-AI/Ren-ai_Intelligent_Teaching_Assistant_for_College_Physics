@@ -11,11 +11,23 @@ TEACHER_MATERIALS_DIR = MATERIALS_DIR / "教师专用"
 TEACHER_EXAM_MATERIALS_DIR = TEACHER_MATERIALS_DIR / "教研考试"
 
 
+def resolve_app_path(value: str | os.PathLike[str]) -> Path:
+    """Resolve configured paths relative to agnet/, never the launch directory.
+
+    Absolute paths and user-home paths remain supported for external resources.
+    Keep relative values in configuration; normalize only at the I/O boundary.
+    """
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = APP_DIR / path
+    return path.resolve()
+
+
 def _exam_materials_dir() -> Path:
     """Locate the restricted exam corpus without copying it into the app tree."""
     configured = os.getenv("PHYSICS_EXAM_MATERIALS_DIR", "").strip()
     if configured:
-        return Path(configured).expanduser()
+        return resolve_app_path(configured)
     candidates = (PROJECT_ROOT / "考试素材", PROJECT_ROOT.parent / "考试素材")
     return next((path for path in candidates if path.is_dir()), candidates[0])
 

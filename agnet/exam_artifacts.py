@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Final
 
+from config import resolve_app_path
+
 
 MAX_TEX_BYTES: Final = 512 * 1024
 MAX_PDF_BYTES: Final = 8 * 1024 * 1024
@@ -467,12 +469,17 @@ def find_tex_compiler(preferred: str | os.PathLike[str] | None = None) -> Path |
             base = base[:-4]
         if base not in _COMPILER_NAMES:
             continue
-        candidate_path = Path(candidate).expanduser()
-        located = (
-            str(candidate_path.resolve())
-            if candidate_path.is_file() and os.access(candidate_path, os.X_OK)
-            else shutil.which(str(candidate))
-        )
+        # Bare executable names use PATH; explicit relative paths use agnet/.
+        # Do not accidentally pick a namesake executable in the launch folder.
+        if not any(separator in str(candidate) for separator in ("/", "\\")):
+            located = shutil.which(str(candidate))
+        else:
+            candidate_path = resolve_app_path(candidate)
+            located = (
+                str(candidate_path)
+                if candidate_path.is_file() and os.access(candidate_path, os.X_OK)
+                else None
+            )
         if located:
             return Path(located).resolve()
     return None
@@ -563,9 +570,9 @@ def _tex_environment(workdir: Path) -> dict[str, str]:
     texmf_home = workdir / "texmf-home"
     texmf_home.mkdir()
     default_cache = Path(__file__).resolve().parent.parent / ".runtime" / "tectonic-cache"
-    cache_root = Path(
+    cache_root = resolve_app_path(
         os.getenv("PHYSICS_TEX_CACHE_DIR", str(default_cache))
-    ).expanduser().resolve()
+    )
     cache_root.mkdir(parents=True, exist_ok=True)
     environment.update({
         "TEXMFHOME": str(texmf_home),

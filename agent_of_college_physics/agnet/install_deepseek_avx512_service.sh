@@ -43,6 +43,7 @@ require_file_text() {
 [[ -f "$UNIT_SOURCE" ]] || { echo "缺少 unit：$UNIT_SOURCE" >&2; exit 1; }
 [[ -f "$ENV_SOURCE" ]] || { echo "缺少环境示例：$ENV_SOURCE" >&2; exit 1; }
 require_file_text "$UNIT_SOURCE" 'EnvironmentFile=%h/.config/physics-assistant/deepseek-avx512.env'
+require_file_text "$UNIT_SOURCE" 'WorkingDirectory=%h'
 require_file_text "$UNIT_SOURCE" 'Restart=always'
 require_file_text "$UNIT_SOURCE" '--physcpubind=${DEEPSEEK_AVX512_CPU_LIST}'
 require_file_text "$UNIT_SOURCE" '--membind=${DEEPSEEK_AVX512_NUMA_NODE}'
@@ -102,7 +103,7 @@ systemctl --user daemon-reload
 
 if ((config_created)); then
   echo "已创建配置：$ENV_TARGET"
-  echo "请填写 llama-server、GGUF 分片首文件的绝对路径和独立 API key，然后重新运行本脚本。"
+  echo "请填写 llama-server、GGUF 分片首文件路径（相对用户目录或绝对路径）及独立 API key，然后重新运行本脚本。"
   exit 0
 fi
 
@@ -180,16 +181,14 @@ done
   exit 1
 }
 
-[[ "$DEEPSEEK_AVX512_SERVER_BIN" == /* ]] || {
-  echo "DEEPSEEK_AVX512_SERVER_BIN 必须是绝对路径。" >&2
+# Match WorkingDirectory=%h in the unit, including checks launched elsewhere.
+cd -- "$HOME"
+[[ "$DEEPSEEK_AVX512_SERVER_BIN" == */* ]] || {
+  echo "DEEPSEEK_AVX512_SERVER_BIN 必须含路径分隔符；用户目录下的文件请写 ./llama-server。" >&2
   exit 1
 }
 [[ -x "$DEEPSEEK_AVX512_SERVER_BIN" ]] || {
   echo "llama-server 不存在或不可执行：$DEEPSEEK_AVX512_SERVER_BIN" >&2
-  exit 1
-}
-[[ "$DEEPSEEK_AVX512_MODEL_PATH" == /* ]] || {
-  echo "DEEPSEEK_AVX512_MODEL_PATH 必须是绝对路径。" >&2
   exit 1
 }
 [[ -r "$DEEPSEEK_AVX512_MODEL_PATH" ]] || {
@@ -197,7 +196,7 @@ done
   exit 1
 }
 
-server_help="$($DEEPSEEK_AVX512_SERVER_BIN --help 2>&1 || true)"
+server_help="$("$DEEPSEEK_AVX512_SERVER_BIN" --help 2>&1 || true)"
 [[ "$server_help" == *"--load-mode MODE"* && "$server_help" == *"dio: use DirectIO"* ]] || {
   echo "当前 llama-server 不支持 Direct I/O 加载模式；请使用项目指定的 AVX-512 构建。" >&2
   exit 1

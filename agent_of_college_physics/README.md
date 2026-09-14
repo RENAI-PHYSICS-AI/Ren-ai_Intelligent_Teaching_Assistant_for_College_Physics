@@ -101,7 +101,7 @@ config/physics-assistant.env  # 权限 0600 的运行配置
 安装器会把经过 SHA-256 校验的 Noto Sans CJK SC 下载到
 `.runtime/fonts/NotoSansCJKsc-Regular.otf`。字体只供本项目使用，不写入系统字体目录，
 也不需要 `sudo` 或 `fc-cache`。如需使用已有字体，可在配置中设置
-`PHYSICS_CJK_FONT` 为支持简体中文的字体文件绝对路径。
+`PHYSICS_CJK_FONT` 为支持简体中文的字体文件路径；相对路径以本发布目录为基准，项目外部字体仍可使用绝对路径。
 
 安装器还会下载 Sherpa-ONNX 成品模型 `encoder.int8.onnx`、`decoder.int8.onnx` 和 `tokens.txt`，逐个校验固定大小及 SHA-256 后原子替换。只传输并保存约 226.5 MiB 的 INT8 文件，不下载或保留约 1 GiB 的 FP32 完整归档。下载中断会从已有分块继续。
 
@@ -489,9 +489,13 @@ PDF 解析需要系统提供 `pdftotext`；DOCX/PPTX 原生解析。旧 `.doc/.p
 
 ## 便携性检查
 
-Windows 外层项目提供 `check_portable_paths.py`，已确认源码、配置、知识库字段和所有 SQLite 数据库中没有写死 `C:`、`D:`、`E:` 等盘符路径。
+Windows 外层项目提供 `check_portable_paths.py`，检查源码中的个人绝对路径、主知识库/专题导入/私库清单的相对路径字段，以及 SQLite 的文件路径和附件元数据。对话正文不是文件配置，不因提到路径而误报。检查不输出私有正文，也不会重建知识库。
 
 本目录可整体复制到任意普通用户目录并改名。安装、管理和 HTTPS 脚本均按自身位置确定项目根目录；证书配置写为 `config/tls/...` 相对路径，搬迁后由 `manage.sh` 解析为当前项目中的实际位置。
+
+通过 `install.sh` / `manage.sh` 启动时，考试素材、ASR 模型、TeX 缓存/编译器、字体、证书和实验目录的相对配置均以本发布目录为基准，例如 `.runtime/fonts/NotoSansCJKsc-Regular.otf`、`config/tls/server.crt`。如果绕过脚本直接运行 Python，相对配置则以 `agnet/` 为基准，需要相应写成 `../config/tls/server.crt`。共享解析逻辑位于 `agnet/launcher_paths.sh`。
+
+MiMo / DeepSeek 的独立用户服务采用 `WorkingDirectory=%h`，模型及程序路径可相对用户目录填写，也兼容原绝对路径。系统命令、系统字体和 HTTP 路由不是项目文件路径，不作机械替换。迁移目录后，虚拟环境和第三方工具中安装时生成的路径应通过重新安装处理；不要修改其内部文件。
 
 ## 文件结构
 

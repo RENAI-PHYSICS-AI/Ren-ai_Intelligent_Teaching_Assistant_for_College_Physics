@@ -9,6 +9,8 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from config import resolve_app_path
+
 
 APP_DIR = Path(__file__).resolve().parent
 MODEL_REVISION = "8e40c43232a1c5c66c82111efc5820d3accca11b"
@@ -38,7 +40,7 @@ MODEL_FILES = {
 def default_model_dir() -> Path:
     configured = os.getenv("PHYSICS_ASR_MODEL_DIR", "").strip()
     if configured:
-        return Path(configured).expanduser()
+        return resolve_app_path(configured)
     return APP_DIR / "runtime" / "asr" / "paraformer-zh-streaming"
 
 

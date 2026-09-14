@@ -4,6 +4,8 @@ After=network.target
 
 [Service]
 Type=simple
+# Resolve relative model/runtime paths against the service user's home.
+WorkingDirectory=%h
 EnvironmentFile=%h/.config/physics-assistant/mimo-vl-avx2.env
 ExecStartPre=/usr/bin/test -x ${MIMO_VL_SERVER_BIN}
 ExecStartPre=/usr/bin/test -r ${MIMO_VL_MODEL_PATH}

@@ -6,11 +6,10 @@ import math
 import re
 import time
 from collections.abc import Iterator
-from pathlib import Path
 
 import requests
 
-from config import APP_DIR, TEACHER_EXAM_TEMPLATE_FILE, setting
+from config import TEACHER_EXAM_TEMPLATE_FILE, resolve_app_path, setting
 from exam_artifacts import ExamArtifactError, extract_named_tex_documents, validate_tex_document
 from exam_blueprint import (
     EXAM_BLUEPRINT_FALLBACK_INSTRUCTIONS,
@@ -109,9 +108,7 @@ def _request_verify() -> bool | str:
     configured = setting("PHYSICS_CA_BUNDLE").strip()
     if not configured:
         return True
-    path = Path(configured).expanduser()
-    if not path.is_absolute():
-        path = APP_DIR / path
+    path = resolve_app_path(configured)
     if not path.is_file():
         raise FileNotFoundError(f"模型服务 CA 证书不存在：{path}")
     return str(path)

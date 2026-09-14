@@ -9,7 +9,7 @@ import subprocess
 import threading
 import time
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import IO
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
@@ -17,7 +17,7 @@ from urllib.request import urlopen
 
 import streamlit as st
 
-from config import APP_DIR
+from config import APP_DIR, resolve_app_path
 
 
 EXPERIMENT_ROOT = APP_DIR / "experiments"
@@ -502,7 +502,18 @@ def service_ready(service: ExperimentService, timeout: float = 0.45) -> bool:
 
 def _julia_command(service: ExperimentService) -> list[str]:
     configured = os.getenv("PHYSICS_JULIA_EXE", "").strip()
-    julia = configured or shutil.which("julia")
+    if configured and (
+        Path(configured).is_absolute() or PureWindowsPath(configured).is_absolute()
+    ):
+        julia = configured
+    elif configured and any(separator in configured for separator in ("/", "\\")):
+        julia = str(resolve_app_path(configured))
+    else:
+        julia = shutil.which(configured or "julia")
+        # PATH itself may contain relative directories. Resolve a located path
+        # before Popen changes cwd to the experiment's Julia project.
+        if julia and any(separator in julia for separator in ("/", "\\")):
+            julia = str(Path(julia).resolve())
     if not julia:
         raise FileNotFoundError("未找到 Julia。请先安装 Julia 1.10，并确认 julia 命令可用。")
 
@@ -556,6 +567,22 @@ def _log_tail(service: ExperimentService, limit: int = 1800) -> str:
         return ""
 
 
+def _julia_environment() -> dict[str, str]:
+    """Resolve application-relative resources before changing Julia's cwd."""
+    environment = os.environ.copy()
+    for name in ("PHYSICS_CJK_FONT", "PHYSICS_SOUND_SPEED_OUTPUT_DIR"):
+        if environment.get(name, "").strip():
+            environment[name] = str(resolve_app_path(environment[name]))
+    if "JULIA_DEPOT_PATH" in environment:
+        # Empty entries have special Julia meanings, including a trailing
+        # separator requesting system depots; never discard or resolve them.
+        environment["JULIA_DEPOT_PATH"] = os.pathsep.join(
+            str(resolve_app_path(value)) if value else ""
+            for value in environment["JULIA_DEPOT_PATH"].split(os.pathsep)
+        )
+    return environment
+
+
 def launch_service(service: ExperimentService) -> subprocess.Popen | None:
     if service_ready(service):
         return _processes.get(service.key)
@@ -572,7 +599,7 @@ def launch_service(service: ExperimentService) -> subprocess.Popen | None:
     log_handle = (RUNTIME_DIR / f"{service.key}.log").open(
         "a", encoding="utf-8", buffering=1
     )
-    environment = os.environ.copy()
+    environment = _julia_environment()
     # Experiments are private upstreams. Browsers reach them only through the
     # same-origin /experiments/... routes on the main 8501 gateway.
     environment[service.julia_host_env] = "127.0.0.1"

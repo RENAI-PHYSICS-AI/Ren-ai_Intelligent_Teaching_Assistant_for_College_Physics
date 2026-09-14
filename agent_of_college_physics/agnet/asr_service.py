@@ -13,6 +13,8 @@ import numpy as np
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 
+from config import resolve_app_path
+
 
 LOGGER = logging.getLogger("physics_asr")
 APP_DIR = Path(__file__).resolve().parent
@@ -38,7 +40,7 @@ def boolean_setting(name: str, default: bool = False) -> bool:
 def model_directory() -> Path:
     configured = os.getenv("PHYSICS_ASR_MODEL_DIR", "").strip()
     if configured:
-        return Path(configured).expanduser().resolve()
+        return resolve_app_path(configured)
     return (APP_DIR / "runtime" / "asr" / "paraformer-zh-streaming").resolve()
 
 

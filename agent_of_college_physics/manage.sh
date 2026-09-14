@@ -2,6 +2,8 @@
 set -Eeuo pipefail
 
 APP_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=agnet/launcher_paths.sh
+source "$APP_ROOT/agnet/launcher_paths.sh"
 RUNTIME_ROOT="$APP_ROOT/.runtime"
 CONFIG_FILE="$APP_ROOT/config/physics-assistant.env"
 PID_DIR="$RUNTIME_ROOT/pids"
@@ -63,9 +65,6 @@ export PHYSICS_MICHELSON_WAVELENGTH_PORT="${PHYSICS_MICHELSON_WAVELENGTH_PORT:-9
 export PHYSICS_MICHELSON_WAVELENGTH_UPSTREAM="${PHYSICS_MICHELSON_WAVELENGTH_UPSTREAM:-http://127.0.0.1:$PHYSICS_MICHELSON_WAVELENGTH_PORT}"
 export PHYSICS_CJK_FONT="${PHYSICS_CJK_FONT:-$RUNTIME_ROOT/fonts/NotoSansCJKsc-Regular.otf}"
 export PHYSICS_ASR_MODEL_DIR="${PHYSICS_ASR_MODEL_DIR:-$RUNTIME_ROOT/models/paraformer-zh-streaming}"
-if [[ "$PHYSICS_ASR_MODEL_DIR" != /* ]]; then
-  export PHYSICS_ASR_MODEL_DIR="$APP_ROOT/${PHYSICS_ASR_MODEL_DIR#./}"
-fi
 export PHYSICS_ASR_PORT="${PHYSICS_ASR_PORT:-8604}"
 export PHYSICS_ASR_UPSTREAM="http://127.0.0.1:$PHYSICS_ASR_PORT"
 export PHYSICS_CHAT_MODEL_KEY="${PHYSICS_CHAT_MODEL_KEY:-xiaomi-mimo-vl-miloco-7b}"
@@ -91,12 +90,7 @@ export PHYSICS_GATEWAY_HTTPS_PORT="${PHYSICS_GATEWAY_HTTPS_PORT:-}"
 export PHYSICS_GATEWAY_TLS_CERT="${PHYSICS_GATEWAY_TLS_CERT:-$APP_ROOT/config/tls/server.crt}"
 export PHYSICS_GATEWAY_TLS_KEY="${PHYSICS_GATEWAY_TLS_KEY:-$APP_ROOT/config/tls/server.key}"
 export PHYSICS_GATEWAY_PUBLIC_PREFIX="${PHYSICS_GATEWAY_PUBLIC_PREFIX:-/agent}"
-if [[ "$PHYSICS_GATEWAY_TLS_CERT" != /* ]]; then
-  export PHYSICS_GATEWAY_TLS_CERT="$APP_ROOT/${PHYSICS_GATEWAY_TLS_CERT#./}"
-fi
-if [[ "$PHYSICS_GATEWAY_TLS_KEY" != /* ]]; then
-  export PHYSICS_GATEWAY_TLS_KEY="$APP_ROOT/${PHYSICS_GATEWAY_TLS_KEY#./}"
-fi
+physics_resolve_launcher_paths "$APP_ROOT"
 
 pid_alive() {
   local name="$1" pid_file="$PID_DIR/$1.pid" pid

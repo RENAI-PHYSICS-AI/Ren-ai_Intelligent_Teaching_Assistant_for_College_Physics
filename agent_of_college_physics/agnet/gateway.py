@@ -10,6 +10,8 @@ from collections.abc import AsyncIterator
 from aiohttp import ClientError, ClientSession, ClientTimeout, ServerTimeoutError, WSMsgType, web
 from multidict import CIMultiDict
 
+from config import resolve_app_path
+
 
 LOGGER = logging.getLogger("physics_gateway")
 STREAMLIT_UPSTREAM = os.getenv("PHYSICS_STREAMLIT_UPSTREAM", "http://127.0.0.1:8502")
@@ -434,7 +436,9 @@ def tls_context() -> ssl.SSLContext | None:
         raise RuntimeError("HTTPS 网关必须同时配置证书和私钥")
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.minimum_version = ssl.TLSVersion.TLSv1_2
-    context.load_cert_chain(certificate, private_key)
+    context.load_cert_chain(
+        str(resolve_app_path(certificate)), str(resolve_app_path(private_key))
+    )
     return context
 
 

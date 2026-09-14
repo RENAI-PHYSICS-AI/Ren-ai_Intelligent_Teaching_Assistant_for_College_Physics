@@ -60,6 +60,11 @@ install -d -m 0700 "${EXTRACT_DIR}"
 
 printf '[1/5] 下载 Tectonic %s……\n' "${TECTONIC_VERSION}"
 if [[ -n "${PHYSICS_TECTONIC_ARCHIVE:-}" ]]; then
+    # Match the other release configuration paths, regardless of invocation cwd.
+    case "${PHYSICS_TECTONIC_ARCHIVE}" in
+        /*) ;;
+        *) PHYSICS_TECTONIC_ARCHIVE="${PROJECT_DIR}/${PHYSICS_TECTONIC_ARCHIVE#./}" ;;
+    esac
     PRELOADED_ARCHIVE="$(cd -- "$(dirname -- "${PHYSICS_TECTONIC_ARCHIVE}")" && pwd -P)/$(basename -- "${PHYSICS_TECTONIC_ARCHIVE}")"
     [[ -f "${PRELOADED_ARCHIVE}" && ! -L "${PRELOADED_ARCHIVE}" ]] \
         || fail "预下载安装包不存在或不是普通文件：${PRELOADED_ARCHIVE}"

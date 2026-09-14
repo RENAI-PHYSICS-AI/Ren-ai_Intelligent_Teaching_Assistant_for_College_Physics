@@ -4,6 +4,8 @@ After=network.target
 
 [Service]
 Type=simple
+# Resolve relative model/runtime paths against the service user's home.
+WorkingDirectory=%h
 EnvironmentFile=%h/.config/physics-assistant/deepseek-avx512.env
 ExecStartPre=/usr/bin/test -x ${DEEPSEEK_AVX512_SERVER_BIN}
 ExecStartPre=/usr/bin/test -r ${DEEPSEEK_AVX512_MODEL_PATH}

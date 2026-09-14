@@ -42,6 +42,7 @@ require_file_text() {
 [[ -f "$UNIT_SOURCE" ]] || { echo "缺少 unit：$UNIT_SOURCE" >&2; exit 1; }
 [[ -f "$ENV_SOURCE" ]] || { echo "缺少环境示例：$ENV_SOURCE" >&2; exit 1; }
 require_file_text "$UNIT_SOURCE" 'EnvironmentFile=%h/.config/physics-assistant/mimo-vl-avx2.env'
+require_file_text "$UNIT_SOURCE" 'WorkingDirectory=%h'
 require_file_text "$UNIT_SOURCE" 'Restart=always'
 require_file_text "$UNIT_SOURCE" '--physcpubind=${MIMO_VL_CPU_LIST}'
 require_file_text "$UNIT_SOURCE" '--membind=${MIMO_VL_NUMA_NODE}'
@@ -106,7 +107,7 @@ systemctl --user daemon-reload
 
 if ((config_created)); then
   echo "已创建配置：$ENV_TARGET"
-  echo "请填写 llama-server、GGUF、mmproj 的绝对路径和独立 API key，然后重新运行本脚本。"
+  echo "请填写 llama-server、GGUF、mmproj 路径（相对用户目录或绝对路径）及独立 API key，然后重新运行本脚本。"
   exit 0
 fi
 if ((NO_START)); then
@@ -164,9 +165,12 @@ done
   echo "LLAMA_API_KEY 必须是 32-256 位安全字符；建议使用 openssl rand -hex 32。" >&2
   exit 1
 }
-for path_variable in MIMO_VL_SERVER_BIN MIMO_VL_MODEL_PATH MIMO_VL_MMPROJ_PATH; do
-  [[ "${!path_variable}" == /* ]] || { echo "$path_variable 必须是绝对路径。" >&2; exit 1; }
-done
+# Match WorkingDirectory=%h in the unit, including checks launched elsewhere.
+cd -- "$HOME"
+[[ "$MIMO_VL_SERVER_BIN" == */* ]] || {
+  echo "MIMO_VL_SERVER_BIN 必须含路径分隔符；用户目录下的文件请写 ./llama-server。" >&2
+  exit 1
+}
 [[ -x "$MIMO_VL_SERVER_BIN" ]] || { echo "llama-server 不存在或不可执行：$MIMO_VL_SERVER_BIN" >&2; exit 1; }
 [[ -r "$MIMO_VL_MODEL_PATH" ]] || { echo "模型文件不存在或不可读：$MIMO_VL_MODEL_PATH" >&2; exit 1; }
 [[ -r "$MIMO_VL_MMPROJ_PATH" ]] || { echo "mmproj 文件不存在或不可读：$MIMO_VL_MMPROJ_PATH" >&2; exit 1; }

@@ -37,3 +37,12 @@ def test_toml_signature_ignores_formatting_and_key_order(tmp_path: Path) -> None
     second.write_text('[compat]\nBonito="4.2"\n\njulia="1.10"\n', encoding="utf-8")
 
     assert check_runtime_sync._toml_signature(first) == check_runtime_sync._toml_signature(second)
+
+
+def test_shared_launchers_and_examples_are_checked_but_windows_only_scripts_are_not(tmp_path):
+    shared = ("launcher_paths.sh", "model.service", "model.env.example")
+    windows_only = ("start.bat", "start.ps1")
+    for name in shared + windows_only:
+        (tmp_path / name).write_text("# fixture\n", encoding="utf-8")
+    inventory = check_runtime_sync._runtime_files(tmp_path)
+    assert set(inventory) == {Path(name) for name in shared}

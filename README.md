@@ -629,13 +629,31 @@ Rocky 目录已同步全部二十二套实验，内部端口为 `9384`–`9405`�
 
 `agent_of_college_physics` 文件夹是某次迁移时生成的完整快照。Windows 版后续新增的账号、历史、教材或知识库不会自动进入 Rocky 版；需要重新执行安全迁移或有选择地同步相应数据文件。迁移数据库时应先停止写入，或使用 SQLite 在线备份，避免复制到不一致的 WAL 状态。
 
-迁移前后均可检查源码、知识库和 SQLite 数据中是否写死 Windows 盘符：
+迁移前后均可检查源码中的个人绝对路径、知识库以及 SQLite 的文件路径元数据：
 
 ```powershell
 .\agnet\.venv\Scripts\python.exe .\check_portable_paths.py
 ```
 
 Windows 与 Rocky 两套程序均从启动脚本或当前文件的位置推导项目根目录，项目文件夹可以整体移动或改名。项目内的数据库、知识库、证书和运行目录使用相对位置；模型服务地址、系统字体、外部程序等机器级资源仍由环境配置指定。
+
+### 相对路径约定
+
+配置和持久化索引优先使用 `/` 分隔的相对路径。程序在读取文件或启动子进程时才换算实际路径，不能依赖运行命令时所在的目录；因此运行日志中出现换算后的绝对路径是正常的。
+
+| 使用入口 | 相对配置的基准 | 示例 |
+| --- | --- | --- |
+| Windows 启动脚本、直接运行 Python | 对应的 `agnet/` | `PHYSICS_EXAM_MATERIALS_DIR=../考试素材`、`PHYSICS_CJK_FONT=assets/fonts/NotoSansCJKsc-Regular.otf` |
+| Rocky `install.sh`、`manage.sh` | `agent_of_college_physics/` 发布目录 | `PHYSICS_GATEWAY_TLS_CERT=config/tls/server.crt`、`PHYSICS_TEX_CACHE_DIR=.runtime/tectonic-cache` |
+| 独立 MiMo / DeepSeek 用户服务 | 当前用户目录（`%h`） | 模型和程序配置可写 `.lmstudio/...` 或 `./llama.cpp/...` |
+
+这些规则适用于考试素材、ASR 模型、TeX 缓存/编译器、字体、TLS/CA 证书和可视化实验启动路径。显式绝对路径仍可用于项目外部资源；`julia`、`tectonic` 等不带目录的命令保留 `PATH` 查找。Julia 缓存列表保留平台分隔符和空项语义（Windows 为 `;`，Linux 为 `:`）。
+
+公开/教师索引的文件引用及图件 ZIP 条目使用相对路径。教师清单的 `source_roots_base=logical` 表示来源别名：`考试素材`、`教学素材/教师专用/教研考试`，实际目录由当前配置映射，不记录原电脑盘符或仓库名称。
+
+路径检查同时覆盖主知识库、专题导入和教师私库的路径字段，不把题目正文或网络参考链接当作文件路径，也不会修改数据库或资料。`tools/check_runtime_sync.py` 同时核对共享启动脚本、服务模板与配置示例。
+
+系统要求的 `/usr/bin`、系统字体目录、systemd 用户配置目录及 HTTP 路由应保留原语义。Python 虚拟环境、已安装服务和第三方工具可能含安装时生成的绝对路径；迁移后应按安装流程重建虚拟环境并检查/重装服务，不直接替换其内部文件。
 
 ## 常见问题
 

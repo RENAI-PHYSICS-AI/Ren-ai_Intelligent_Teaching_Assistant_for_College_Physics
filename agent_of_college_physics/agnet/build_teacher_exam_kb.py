@@ -490,7 +490,15 @@ def build() -> dict:
         "skipped": skipped,
         "duplicates": duplicate_files,
         "by_type": dict(sorted(stats.items())),
-        "source_roots": [str(root) for root in roots],
+        # Stable logical aliases match index provenance without persisting a
+        # machine path or the enclosing repository's name. Config maps these
+        # aliases to the actual roots at runtime.
+        "source_roots_base": "logical",
+        "source_roots": [
+            "考试素材" if root == EXAM_MATERIALS_DIR.resolve()
+            else "教学素材/" + relative_source_path(root, MATERIALS_DIR).as_posix()
+            for root in roots
+        ],
         "index_file": TEACHER_EXAM_KB_FILE.name,
         "mandatory_guide": "考试素材/大学物理课程章节与组卷分值规范.md",
         "standard_template": "考试素材/试卷/2025-2026-2/25262大物1补考/main.tex",
