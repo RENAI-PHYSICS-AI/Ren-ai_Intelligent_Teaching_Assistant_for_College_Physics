@@ -136,3 +136,7 @@ julia --project=experiments/thermal_conductivity -e "using Pkg; Pkg.instantiate(
 管理员后台也由统一入口代理；管理员从主站登录后会跳转到 `/agent/analytics`（根路径部署时为 `/analytics`）。注册用户登录会通过同一网关换取签名的 HttpOnly Cookie，刷新页面可自动恢复账号，退出时由网关清除。完成名册身份核验的账号可使用原用户名或学号/工号登录，两种方式均进入同一账号并共享历史记录。管理页面支持名册批量导入，以及未绑定名册记录的逐条修改和删除；已绑定记录受保护。详细配置见仓库根目录说明。
 
 Windows 联网搜索配置位于 `.streamlit/secrets.toml`。该文件使用 TOML 语法，字符串必须写在引号中，例如 `tavily_api_key = "..."`；不要直接复制 Linux 的 `KEY=value` 写法，也不要把密钥提交到 Git。
+
+## 开源协议
+
+本应用的自有程序代码及配套软件文档采用 **GNU General Public License v3.0（GPL-3.0-only，仅第 3 版）**，完整协议与授权范围见上级目录的 [LICENSE](../LICENSE) 和 [README](../README.md)。第三方依赖、模型及教学资料保留各自的许可证或授权条件，用户数据不属于开源发布内容。
